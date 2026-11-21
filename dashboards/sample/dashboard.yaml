@@ -1,0 +1,6 @@
+# Sample dashboard: fake data only, no network, no accounts.
+name: sample              # must match the folder name
+title: Sample Dashboard   # shown in HTML <title> and on error screens
+visibility: public        # public | private
+refresh_minutes: 30       # used by `run.py --all` to decide if it is due
+outputs: [png, html]      # any of: png, html
