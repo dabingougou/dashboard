@@ -1,0 +1,23 @@
+# Python environment and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local configuration with secrets (see config.example.yaml)
+config.yaml
+.env
+*.env
+secrets/
+
+# Generated output and run state (never commit; private dashboards live here)
+output/
+state/
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/

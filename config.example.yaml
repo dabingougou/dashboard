@@ -1,0 +1,18 @@
+# Example configuration. Copy to config.yaml (git ignored) and fill in values.
+#   cp config.example.yaml config.yaml
+# Never commit config.yaml: it may hold tokens, private links or personal data.
+
+# IANA timezone used for every time shown on every dashboard.
+timezone: America/Vancouver
+
+# Per dashboard settings, keyed by dashboard folder name. Each dashboard's
+# fetch step receives only its own block. Leave secrets blank here.
+dashboards:
+  sample:
+    # The sample dashboard needs no accounts or network.
+    # Set to true to simulate a failed fetch and see the "stale since" note.
+    simulate_failure: false
+
+  # example_private_dashboard:
+  #   api_token: ""
+  #   calendar_url: ""
