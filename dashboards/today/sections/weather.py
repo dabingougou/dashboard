@@ -9,8 +9,8 @@ Config (dashboards.today.weather in config.yaml):
     simulate_rain_percent    with simulate: peak rain chance to fake (default 40),
                              so both the rain shown and the dry look can be previewed
     tomorrow_tags            true -> short tags beside the date for what changes
-                             tomorrow: warmer/cooler, windier/calmer, rainier/drier,
-                             or "no change" (default false)
+                             tomorrow: warmer/cooler, windier/calmer, rainier/drier;
+                             nothing shown when nothing changes (default false)
     simulate_tomorrow        with simulate: {temp: +/-deg, wind: +/-speed, rain: +/-points},
                              tomorrow's change versus today (default all 0)
 
@@ -285,7 +285,7 @@ def header_tags(data: dict, ctx) -> list[str]:
             tags.append("rainier")
         elif today - tomorrow >= TOMORROW_RAIN_DELTA and today >= threshold:
             tags.append("drier")
-    return tags or ["no change"]
+    return tags  # nothing changes -> no tags at all
 
 
 def _later_temps(values) -> str | None:

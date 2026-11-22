@@ -187,7 +187,7 @@ With `tomorrow_tags: true`, short tags beside the date say what changes
 tomorrow compared with today: `warmer`/`cooler` (high temperature, 3° or more),
 `windier`/`calmer` (strongest wind, 10 km/h or more), `rainier`/`drier` (highest
 rain chance, 30 points or more, and above the rain threshold). Only changes are
-shown; a quiet day shows `no change`. Any section can offer such tags by
+shown; on a quiet day the corner stays empty. Any section can offer such tags by
 defining `header_tags(data, ctx)`.
 
 Settings live under `dashboards.today.weather` in `config.yaml` (see
