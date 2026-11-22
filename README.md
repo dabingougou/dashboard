@@ -183,6 +183,13 @@ with a 15 second timeout. The band shows up to three blocks:
   current hour and the next 3 is at or above `rain_threshold_percent`.
   Otherwise the block is left out and the others use the space.
 
+With `tomorrow_tags: true`, short tags beside the date say what changes
+tomorrow compared with today: `warmer`/`cooler` (high temperature, 3° or more),
+`windier`/`calmer` (strongest wind, 10 km/h or more), `rainier`/`drier` (highest
+rain chance, 30 points or more, and above the rain threshold). Only changes are
+shown; a quiet day shows `no change`. Any section can offer such tags by
+defining `header_tags(data, ctx)`.
+
 Settings live under `dashboards.today.weather` in `config.yaml` (see
 `config.example.yaml`). Put your real `latitude`/`longitude` only in
 `config.yaml`. If they are blank, the screen shows "Weather: set location in

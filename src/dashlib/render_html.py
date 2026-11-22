@@ -27,6 +27,8 @@ footer.stale { color: var(--bg); background: var(--fg); font-weight: 700; border
 .el { margin: 0 0 18px; }
 h1.el-title { font-size: 2.1em; line-height: 1.15; margin: 0 0 4px;
   padding-bottom: 6px; border-bottom: 4px solid var(--rule); }
+h1.el-title .tags { float: right; list-style: none; margin: 0; padding: 0;
+  font-size: .4em; line-height: 1.3; text-align: right; }
 .el-subtitle { color: var(--muted); margin: 4px 0 0; }
 .el-banner { background: var(--fg); color: var(--bg); font-weight: 700; text-align: center;
   padding: 8px 12px; letter-spacing: .05em; }

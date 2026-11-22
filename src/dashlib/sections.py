@@ -8,6 +8,8 @@ A section is a Python file <sections_dir>/<name>.py that defines:
         configured display timezone) if the block doesn't set one.
     layout(data, ctx) -> list of element dicts
     FOOTER_NOTE = "..."   optional, e.g. a data source attribution
+    header_tags(data, ctx) -> list of short strings   optional; shown beside
+        the dashboard's title line (see header_tags_sections)
 
 Which sections run, and in which order, comes from the dashboard's
 `sections:` list in config.yaml. Sections don't know about each other, so new
@@ -68,3 +70,13 @@ def layout_sections(sections_dir: Path, data: dict, ctx) -> tuple[list[dict], li
         if note and note not in notes:
             notes.append(note)
     return elements, notes
+
+
+def header_tags_sections(sections_dir: Path, data: dict, ctx) -> list[str]:
+    """Collect header_tags() of every section that defines it, in order."""
+    tags: list[str] = []
+    for sec in data.get("sections") or []:
+        fn = getattr(load_section(sections_dir, sec["name"]), "header_tags", None)
+        if fn:
+            tags.extend(str(t) for t in (fn(sec["data"], ctx) or []) if t)
+    return tags

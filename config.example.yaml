@@ -27,6 +27,8 @@ dashboards:
       rain_threshold_percent: 20  # show the rain block at or above this probability
       simulate: false             # true -> fake SAMPLE weather, no network
       simulate_rain_percent: 40   # with simulate: peak rain chance (below the threshold -> dry look)
+      tomorrow_tags: false        # true -> tags beside the date for what changes tomorrow
+      # simulate_tomorrow: {temp: -4, wind: 15, rain: 60}   # with simulate: tomorrow minus today
 
   # example_private_dashboard:
   #   api_token: ""

@@ -3,7 +3,9 @@
 Each type has a PNG drawer (canvas, el) and an HTML drawer (page, el).
 Element dicts (all text is plain strings; format times in the layout step):
 
-  {"type": "title",   "text": str, "subtitle": str?, "size": int|name?}
+  {"type": "title",   "text": str, "subtitle": str?, "size": int|name?, "tags": [str]?}
+      tags: short bold lines at the right end of the title line (bottom
+      aligned). The title shrinks if it would come too close to them.
   {"type": "banner",  "text": str}                       inverted full width label
   {"type": "text",    "text": str, "size": "small|medium|large"?, "bold": bool?}
   {"type": "kv",      "items": [[label, value], ...]}    label left, big value right
@@ -41,8 +43,40 @@ def _s(value) -> str:
 
 
 # ----- title ---------------------------------------------------------------
+TITLE_TAG_PX = 24
+TITLE_TAG_GAP = 24          # minimum space between the title and its tags
+TITLE_MIN_SCALE = 0.7
+
+
+def _title_with_tags(c, text, size, tags):
+    tf = c.font(TITLE_TAG_PX, bold=True)
+    tag_w = max(c.text_width(t, tf) for t in tags)
+    room = c.width - tag_w - TITLE_TAG_GAP
+    f0 = c.font(size, bold=True)
+    px0 = f0.size
+    font = f0
+    px = px0
+    while c.text_width(text, font) > room and px > px0 * TITLE_MIN_SCALE:
+        px -= 2
+        font = c.font(px, bold=True)
+    text = c.ellipsize(text, font, room)
+    top, lh0 = c.y, c.line_height(f0)
+    baseline = top + f0.getmetrics()[0]  # keep the baseline where a full size title has it
+    c.draw.text((c.x0, baseline), text, font=font, fill=BLACK, anchor="ls")
+    tlh = c.line_height(tf)
+    y = max(top, top + lh0 - tlh * len(tags))
+    for t in tags:
+        c.draw.text((c.x1 - c.text_width(t, tf), y), t, font=tf, fill=BLACK)
+        y += tlh
+    c.y = top + lh0
+
+
 def title_png(c, el):
-    c.text_block(_s(el.get("text")), size=el.get("size", "title"), bold=True)
+    tags = [_s(t) for t in (el.get("tags") or []) if t]
+    if tags:
+        _title_with_tags(c, _s(el.get("text")), el.get("size", "title"), tags)
+    else:
+        c.text_block(_s(el.get("text")), size=el.get("size", "title"), bold=True)
     if el.get("subtitle"):
         c.text_block(_s(el["subtitle"]), size="small")
     c.y += 6
@@ -51,7 +85,11 @@ def title_png(c, el):
 
 
 def title_html(page, el):
-    out = f'<h1 class="el-title">{escape(_s(el.get("text")))}</h1>'
+    tags = [_s(t) for t in (el.get("tags") or []) if t]
+    tag_html = ""
+    if tags:
+        tag_html = '<ul class="tags">' + "".join(f"<li>{escape(t)}</li>" for t in tags) + "</ul>"
+    out = f'<h1 class="el-title">{tag_html}{escape(_s(el.get("text")))}</h1>'
     if el.get("subtitle"):
         out += f'<p class="el-subtitle">{escape(_s(el["subtitle"]))}</p>'
     return f'<header class="el">{out}</header>'

@@ -8,6 +8,11 @@ Config (dashboards.today.weather in config.yaml):
     simulate                 true -> fake SAMPLE values, no network
     simulate_rain_percent    with simulate: peak rain chance to fake (default 40),
                              so both the rain shown and the dry look can be previewed
+    tomorrow_tags            true -> short tags beside the date for what changes
+                             tomorrow: warmer/cooler, windier/calmer, rainier/drier,
+                             or "no change" (default false)
+    simulate_tomorrow        with simulate: {temp: +/-deg, wind: +/-speed, rain: +/-points},
+                             tomorrow's change versus today (default all 0)
 
 Data source: https://open-meteo.com/ (free, no key; attribution required).
 """
@@ -29,6 +34,12 @@ HOURS_AHEAD = 3          # rain window: the current hour and the next 3
 LATER_HOURS = (3, 6)     # forecast temperatures shown in parentheses
 WIND_LATER_HOURS = 3     # forecast wind shown in parentheses
 FETCH_HOURS = 7          # hourly values requested: now .. +6h
+
+# Tomorrow versus today, compared on daily values (high temperature, strongest
+# wind, highest rain chance). A tag shows only when the change reaches these.
+TOMORROW_TEMP_DELTA = 3                                       # degrees
+TOMORROW_WIND_DELTA = {"kmh": 10, "ms": 3, "mph": 6, "kn": 5}  # per wind unit
+TOMORROW_RAIN_DELTA = 30                                      # percentage points
 
 TEMP_UNITS = ("celsius", "fahrenheit")
 WIND_UNITS = {"kmh": "km/h", "ms": "m/s", "mph": "mph", "kn": "kn"}
@@ -99,8 +110,18 @@ def _settings(config: dict) -> dict:
     sim_rain = 40 if _blank(sim_rain) else _num(sim_rain)
     if sim_rain is None or not 0 <= sim_rain <= 100:
         raise ValueError("weather.simulate_rain_percent must be a number from 0 to 100")
+    sim_t = config.get("simulate_tomorrow") or {}
+    if not isinstance(sim_t, dict):
+        raise ValueError("weather.simulate_tomorrow must be a mapping like {temp: -4, wind: 12, rain: 40}")
+    sim_tomorrow = {}
+    for k in ("temp", "wind", "rain"):
+        v = 0 if _blank(sim_t.get(k)) else _num(sim_t.get(k))
+        if v is None:
+            raise ValueError(f"weather.simulate_tomorrow.{k} must be a number")
+        sim_tomorrow[k] = v
     return {"temp_unit": temp_unit, "wind_unit": wind_unit, "threshold": threshold,
-            "sim_rain": sim_rain}
+            "sim_rain": sim_rain, "sim_tomorrow": sim_tomorrow,
+            "tomorrow_tags": config.get("tomorrow_tags") is True}
 
 
 def _simulated(config: dict, s: dict) -> dict:
@@ -116,7 +137,18 @@ def _simulated(config: dict, s: dict) -> dict:
                    "wind_speed_10m": [18, 19, 21, 24, 22, 20, 17],
                    "precipitation_probability": probs,
                    "weather_code": [2, 3, 61, 61, 3, 3, 2]},
+        "daily": _simulated_daily(peak, s["sim_tomorrow"]),
     }
+
+
+def _simulated_daily(rain_today: float, delta: dict) -> dict:
+    today = {"temp": 8.0, "wind": 24.0, "rain": rain_today}
+    tomorrow = {k: today[k] + delta[k] for k in today}
+    tomorrow["rain"] = min(100.0, max(0.0, tomorrow["rain"]))
+    tomorrow["wind"] = max(0.0, tomorrow["wind"])
+    return {"temperature_2m_max": [today["temp"], tomorrow["temp"]],
+            "wind_speed_10m_max": [today["wind"], tomorrow["wind"]],
+            "precipitation_probability_max": [today["rain"], tomorrow["rain"]]}
 
 
 def _request(lat: float, lon: float, config: dict, s: dict) -> dict:
@@ -126,6 +158,8 @@ def _request(lat: float, lon: float, config: dict, s: dict) -> dict:
         "current": "temperature_2m,wind_speed_10m,weather_code",
         "hourly": "temperature_2m,wind_speed_10m,precipitation_probability,weather_code",
         "forecast_hours": FETCH_HOURS,
+        "daily": "temperature_2m_max,wind_speed_10m_max,precipitation_probability_max",
+        "forecast_days": 2,
         "timezone": config.get("timezone") or "UTC",
         "temperature_unit": s["temp_unit"],
         "wind_speed_unit": s["wind_unit"],
@@ -146,7 +180,8 @@ def _request(lat: float, lon: float, config: dict, s: dict) -> dict:
             times.append(datetime.fromisoformat(t).replace(tzinfo=offset).isoformat())
         except (TypeError, ValueError):
             times.append(None)
-    return {"time": times, "current": raw.get("current") or {}, "hourly": raw.get("hourly") or {}}
+    return {"time": times, "current": raw.get("current") or {}, "hourly": raw.get("hourly") or {},
+            "daily": raw.get("daily") or {}}
 
 
 def fetch(config: dict) -> dict:
@@ -198,6 +233,9 @@ def fetch(config: dict) -> dict:
         "rain_time": rain_time,
         "rain_is_now": rain_max is not None and rain_index == 0,
         "rain_threshold": s["threshold"],
+        "tomorrow_tags": s["tomorrow_tags"],
+        "wind_unit_key": s["wind_unit"],
+        "daily": _daily_pair(raw.get("daily") or {}),
     }
 
 
@@ -208,6 +246,46 @@ def _round(x) -> int:
 
 def _deg(x) -> str:
     return f"{_round(x)}°"
+
+
+def _daily_pair(daily: dict) -> dict | None:
+    """{"temp": [today, tomorrow], "wind": [...], "rain": [...]}, or None if incomplete."""
+    out = {}
+    for key, name in (("temp", "temperature_2m_max"), ("wind", "wind_speed_10m_max"),
+                      ("rain", "precipitation_probability_max")):
+        vals = daily.get(name) or []
+        pair = [_num(_at(vals, 0)), _num(_at(vals, 1))]
+        out[key] = pair if None not in pair else None
+    return out if any(out.values()) else None
+
+
+def header_tags(data: dict, ctx) -> list[str]:
+    """Short tags for what changes tomorrow, shown beside the date."""
+    if data.get("status") != "ok" or not data.get("tomorrow_tags") or not data.get("daily"):
+        return []
+    d = data["daily"]
+    tags = []
+    if d.get("temp"):
+        diff = d["temp"][1] - d["temp"][0]
+        if diff >= TOMORROW_TEMP_DELTA:
+            tags.append("warmer")
+        elif diff <= -TOMORROW_TEMP_DELTA:
+            tags.append("cooler")
+    if d.get("wind"):
+        step = TOMORROW_WIND_DELTA.get(data.get("wind_unit_key"), TOMORROW_WIND_DELTA["kmh"])
+        diff = d["wind"][1] - d["wind"][0]
+        if diff >= step:
+            tags.append("windier")
+        elif diff <= -step:
+            tags.append("calmer")
+    if d.get("rain"):
+        today, tomorrow = d["rain"]
+        threshold = data.get("rain_threshold", 20)
+        if tomorrow - today >= TOMORROW_RAIN_DELTA and tomorrow >= threshold:
+            tags.append("rainier")
+        elif today - tomorrow >= TOMORROW_RAIN_DELTA and today >= threshold:
+            tags.append("drier")
+    return tags or ["no change"]
 
 
 def _later_temps(values) -> str | None:

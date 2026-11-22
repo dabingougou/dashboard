@@ -8,14 +8,15 @@ Setting (dashboards.today in config.yaml):
 
 from pathlib import Path
 
-from dashlib.sections import layout_sections
+from dashlib.sections import header_tags_sections, layout_sections
 
 SECTIONS = Path(__file__).resolve().parent / "sections"
 
 
 def layout(data, ctx):
     elements, notes = layout_sections(SECTIONS, data, ctx)
-    date = {"type": "title", "text": ctx.format_time(ctx.now, "date"), "size": 84}
+    date = {"type": "title", "text": ctx.format_time(ctx.now, "date"), "size": 84,
+            "tags": header_tags_sections(SECTIONS, data, ctx)}
     if ctx.settings.get("source_notes", True) is False:
         notes = []
     return {"elements": [date, *elements], "footer_note": " · ".join(notes)}
