@@ -174,8 +174,10 @@ private screen). It uses only the standard library,
 with a 15 second timeout. The band shows up to three blocks:
 
 - **Temperature:** a condition icon (mapped from the WMO weather code), the
-  current value and, in parentheses, the value 3 hours later.
-- **Wind:** a wind icon, the current speed, and the unit under it.
+  current value and, in parentheses, the forecasts for 3 and 6 hours later
+  (`10° (8°/6°)`).
+- **Wind:** a wind icon, the current speed, the forecast 3 hours later in
+  parentheses, and the unit under it (`5 (12)` over `km/h`).
 - **Rain:** a drop icon and the chance, with the hour of the peak under it
   ("by 3 pm"). Shown only when the highest precipitation probability over the
   current hour and the next 3 is at or above `rain_threshold_percent`.

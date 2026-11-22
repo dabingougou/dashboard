@@ -1,4 +1,4 @@
-"""Weather section: current conditions and the next 3 hours from Open-Meteo.
+"""Weather section: current conditions, +3h and +6h forecasts, from Open-Meteo.
 
 Config (dashboards.today.weather in config.yaml):
     latitude, longitude      blank -> a "Set location in config.yaml" note
@@ -25,7 +25,10 @@ FOOTER_NOTE = "Weather: Open-Meteo.com"
 
 API_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEOUT_SECONDS = 15
-HOURS_AHEAD = 3
+HOURS_AHEAD = 3          # rain window: the current hour and the next 3
+LATER_HOURS = (3, 6)     # forecast temperatures shown in parentheses
+WIND_LATER_HOURS = 3     # forecast wind shown in parentheses
+FETCH_HOURS = 7          # hourly values requested: now .. +6h
 
 TEMP_UNITS = ("celsius", "fahrenheit")
 WIND_UNITS = {"kmh": "km/h", "ms": "m/s", "mph": "mph", "kn": "kn"}
@@ -105,13 +108,14 @@ def _simulated(config: dict, s: dict) -> dict:
     hour = datetime.now(tz).replace(minute=0, second=0, microsecond=0)
     # Peak at +2h; the other hours are lower, so the peak hour is unambiguous.
     peak = s["sim_rain"]
-    probs = [round(peak * k) for k in (0.25, 0.6, 1.0, 0.75)]
+    probs = [round(peak * k) for k in (0.25, 0.6, 1.0, 0.75, 0.5, 0.3, 0.2)]
     return {
-        "time": [(hour + timedelta(hours=i)).isoformat() for i in range(HOURS_AHEAD + 1)],
+        "time": [(hour + timedelta(hours=i)).isoformat() for i in range(FETCH_HOURS)],
         "current": {"temperature_2m": 7.2, "wind_speed_10m": 18.4, "weather_code": 2},
-        "hourly": {"temperature_2m": [7.0, 6.4, 5.8, 5.1],
+        "hourly": {"temperature_2m": [7.0, 6.4, 5.8, 5.1, 4.4, 3.8, 3.2],
+                   "wind_speed_10m": [18, 19, 21, 24, 22, 20, 17],
                    "precipitation_probability": probs,
-                   "weather_code": [2, 3, 61, 61]},
+                   "weather_code": [2, 3, 61, 61, 3, 3, 2]},
     }
 
 
@@ -120,8 +124,8 @@ def _request(lat: float, lon: float, config: dict, s: dict) -> dict:
         "latitude": f"{lat:.4f}",
         "longitude": f"{lon:.4f}",
         "current": "temperature_2m,wind_speed_10m,weather_code",
-        "hourly": "temperature_2m,precipitation_probability,weather_code",
-        "forecast_hours": HOURS_AHEAD + 1,
+        "hourly": "temperature_2m,wind_speed_10m,precipitation_probability,weather_code",
+        "forecast_hours": FETCH_HOURS,
         "timezone": config.get("timezone") or "UTC",
         "temperature_unit": s["temp_unit"],
         "wind_speed_unit": s["wind_unit"],
@@ -164,6 +168,7 @@ def fetch(config: dict) -> dict:
     temps = hourly.get("temperature_2m") or []
     codes = hourly.get("weather_code") or []
     probs = hourly.get("precipitation_probability") or []
+    winds = hourly.get("wind_speed_10m") or []
 
     temp_now = _num(cur.get("temperature_2m"))
     if temp_now is None:
@@ -184,7 +189,8 @@ def fetch(config: dict) -> dict:
         "status": "ok",
         "sample": simulate,
         "temp_now": temp_now,
-        "temp_later": _num(_at(temps, HOURS_AHEAD)),
+        "temp_later": [_num(_at(temps, h)) for h in LATER_HOURS],
+        "wind_later": _num(_at(winds, WIND_LATER_HOURS)),
         "code_now": None if code_now is None else int(code_now),
         "wind_now": _num(cur.get("wind_speed_10m")),
         "wind_unit": WIND_UNITS[s["wind_unit"]],
@@ -204,6 +210,14 @@ def _deg(x) -> str:
     return f"{_round(x)}°"
 
 
+def _later_temps(values) -> str | None:
+    """'8°/6°' for the forecast temperatures, skipping missing ones."""
+    if not isinstance(values, list):  # older saved data held one number
+        values = [values]
+    shown = [_deg(v) for v in values if isinstance(v, (int, float))]
+    return "/".join(shown) or None
+
+
 def layout(data: dict, ctx) -> list[dict]:
     if data.get("status") == "needs_location":
         return [{"type": "text", "text": "Weather: set location in config.yaml", "size": "small"}]
@@ -214,15 +228,16 @@ def layout(data: dict, ctx) -> list[dict]:
         "icon": condition_icon(code),
         "icon_alt": condition(code),
         "value": _deg(temp_now) if temp_now is not None else "--",
-        "secondary": _deg(temp_later) if temp_later is not None else None,
+        "secondary": _later_temps(temp_later),
         "size": 92,
     }
 
-    wind = data.get("wind_now")
+    wind, wind_later = data.get("wind_now"), data.get("wind_later")
     wind_block = {
         "icon": "wind",
         "icon_alt": "Wind",
         "value": str(_round(wind)) if wind is not None else "",
+        "secondary": str(_round(wind_later)) if wind_later is not None else None,
         "unit": data.get("wind_unit", ""),
         "size": 56,
         "hidden": wind is None,
