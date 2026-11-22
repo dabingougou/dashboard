@@ -3,7 +3,7 @@
 Each type has a PNG drawer (canvas, el) and an HTML drawer (page, el).
 Element dicts (all text is plain strings; format times in the layout step):
 
-  {"type": "title",   "text": str, "subtitle": str?}
+  {"type": "title",   "text": str, "subtitle": str?, "size": int|name?}
   {"type": "banner",  "text": str}                       inverted full width label
   {"type": "text",    "text": str, "size": "small|medium|large"?, "bold": bool?}
   {"type": "kv",      "items": [[label, value], ...]}    label left, big value right
@@ -12,6 +12,12 @@ Element dicts (all text is plain strings; format times in the layout step):
                       "widths": [fraction, ...]?}
   {"type": "divider"}
   {"type": "spacer",  "height": int?}
+  {"type": "stats",   "blocks": [{"value": str, "secondary": str?, "label": str?,
+                                  "caption": str?, "hidden": bool?}, ...],
+                      "max_size": int?}
+      A row of side by side stat blocks: big value, optional secondary value
+      shown in parentheses, optional short label, optional small caption.
+      Hidden blocks are dropped and the visible ones share the full width.
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ def _s(value) -> str:
 
 # ----- title ---------------------------------------------------------------
 def title_png(c, el):
-    c.text_block(_s(el.get("text")), size="title", bold=True)
+    c.text_block(_s(el.get("text")), size=el.get("size", "title"), bold=True)
     if el.get("subtitle"):
         c.text_block(_s(el["subtitle"]), size="small")
     c.y += 6
@@ -197,6 +203,97 @@ def spacer_html(page, el):
     return f'<div style="height:{int(el.get("height", 20))}px"></div>'
 
 
+# ----- stats ---------------------------------------------------------------
+STATS_MIN_VALUE_PX = 28
+
+
+def _visible_blocks(el):
+    return [b for b in (el.get("blocks") or []) if isinstance(b, dict) and not b.get("hidden")]
+
+
+def _fit_value(c, value, secondary, width, max_px):
+    """Largest value size where 'value (secondary)' fits in width."""
+    px = max_px
+    while True:
+        vf = c.font(px, bold=True)
+        sf = c.font(max(22, round(px * 0.5)))
+        vw = c.text_width(value, vf)
+        sw = (c.text_width(f"({secondary})", sf) + px * 0.2) if secondary else 0
+        if vw + sw <= width or px <= STATS_MIN_VALUE_PX:
+            return vf, sf, vw, sw
+        px -= 2
+
+
+def _fit_label(c, text, width):
+    for px in (34, 30, 27, 24):
+        f = c.font(px)
+        if c.text_width(text, f) <= width:
+            return f, text
+    f = c.font(24)
+    return f, c.ellipsize(text, f, width)
+
+
+def stats_png(c, el):
+    blocks = _visible_blocks(el)
+    if not blocks:
+        return
+    n = len(blocks)
+    bw = c.width / n
+    pad = 10
+    inner = bw - 2 * pad
+    max_px = int(el.get("max_size", 96))
+
+    fitted = []
+    for b in blocks:
+        value, sec = _s(b.get("value")), _s(b.get("secondary"))
+        vf, sf, vw, sw = _fit_value(c, value, sec, inner, max_px)
+        label = _fit_label(c, _s(b.get("label")), inner) if b.get("label") else None
+        fitted.append((b, value, sec, vf, sf, vw, sw, label))
+
+    # Shared rows so values, labels and captions line up across blocks.
+    ascent = max(f[3].getmetrics()[0] for f in fitted)
+    descent = max(f[3].getmetrics()[1] for f in fitted)
+    baseline = c.y + ascent
+    row_y = baseline + descent + 6
+    label_h = max((c.line_height(f[7][0]) for f in fitted if f[7]), default=0)
+    cfont = c.font("footer")
+    caption_h = c.line_height(cfont) if any(f[0].get("caption") for f in fitted) else 0
+
+    for i, (b, value, sec, vf, sf, vw, sw, label) in enumerate(fitted):
+        left = c.x0 + i * bw
+        cx = left + bw / 2
+        x = cx - (vw + sw) / 2
+        c.draw.text((x, baseline), value, font=vf, fill=BLACK, anchor="ls")
+        if sec:
+            c.draw.text((x + vw + (sw - c.text_width(f"({sec})", sf)), baseline),
+                        f"({sec})", font=sf, fill=BLACK, anchor="ls")
+        y = row_y
+        if label:
+            c.draw.text((cx, y), label[1], font=label[0], fill=BLACK, anchor="ma")
+        y += label_h
+        if b.get("caption"):
+            cap = c.ellipsize(_s(b["caption"]), cfont, inner)
+            c.draw.text((cx, y), cap, font=cfont, fill=BLACK, anchor="ma")
+        if i > 0:
+            c.draw.line([left, c.y + 4, left, row_y + label_h + caption_h - 4], fill=BLACK, width=2)
+    c.y = row_y + label_h + caption_h
+
+
+def stats_html(page, el):
+    parts = []
+    for b in _visible_blocks(el):
+        inner = f'<div class="v">{escape(_s(b.get("value")))}'
+        if b.get("secondary"):
+            inner += f' <span class="s">({escape(_s(b["secondary"]))})</span>'
+        inner += "</div>"
+        if b.get("label"):
+            inner += f'<div class="l">{escape(_s(b["label"]))}</div>'
+        if b.get("caption"):
+            inner += f'<div class="c">{escape(_s(b["caption"]))}</div>'
+        parts.append(f'<div class="b">{inner}</div>')
+    return f'<div class="el el-stats">{"".join(parts)}</div>' if parts else ""
+
+
 register("title", png=title_png, html=title_html)
 register("banner", png=banner_png, html=banner_html)
 register("text", png=text_png, html=text_html)
@@ -205,3 +302,4 @@ register("list", png=list_png, html=list_html)
 register("table", png=table_png, html=table_html)
 register("divider", png=divider_png, html=divider_html)
 register("spacer", png=spacer_png, html=spacer_html)
+register("stats", png=stats_png, html=stats_html)

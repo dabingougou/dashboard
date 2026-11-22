@@ -77,7 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     for dash in selected:
         try:
             r = run_dashboard(dash, config, output_root=args.output,
-                              state_root=args.state, force=force)
+                              state_root=args.state, force=force,
+                              kindle_script=ROOT / "kindle" / "kindle_run.sh")
         except SafetyError as exc:
             log.error("%s: SAFETY: %s", dash.name, exc)
             worst = 1

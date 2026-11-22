@@ -24,6 +24,7 @@ class Dashboard:
     refresh_minutes: int
     outputs: tuple[str, ...]
     path: Path
+    kindle_publish: bool = False
 
     @property
     def is_private(self) -> bool:
@@ -54,6 +55,12 @@ def load_dashboard(folder: Path) -> Dashboard:
     if not outputs or any(o not in OUTPUT_KINDS for o in outputs):
         raise ValueError(f"{where}: outputs must be a non empty list from {OUTPUT_KINDS}")
 
+    kindle = raw.get("kindle_publish", False)
+    if not isinstance(kindle, bool):
+        raise ValueError(f"{where}: kindle_publish must be true or false")
+    if kindle and "png" not in outputs:
+        raise ValueError(f"{where}: kindle_publish needs 'png' in outputs")
+
     for required in ("fetch.py", "layout.py"):
         if not (folder / required).is_file():
             raise ValueError(f"{folder}: missing {required}")
@@ -65,6 +72,7 @@ def load_dashboard(folder: Path) -> Dashboard:
         refresh_minutes=refresh,
         outputs=tuple(dict.fromkeys(outputs)),
         path=folder,
+        kindle_publish=kindle,
     )
 
 
@@ -74,6 +82,11 @@ def discover(dashboards_dir: Path) -> dict[str, Dashboard]:
         if (folder / "dashboard.yaml").is_file():
             d = load_dashboard(folder)
             found[d.name] = d
+    kindle = [d.name for d in found.values() if d.kindle_publish]
+    if len(kindle) > 1:
+        raise ValueError(
+            "only one dashboard may set kindle_publish: true, but these do: "
+            + ", ".join(kindle))
     return found
 
 
@@ -82,7 +95,11 @@ def load_module(dash: Dashboard, filename: str) -> ModuleType | None:
     path = dash.path / filename
     if not path.is_file():
         return None
-    mod_name = f"dashboards_{dash.name.replace('-', '_')}_{path.stem}"
+    return load_file_module(path, f"dashboards_{dash.name.replace('-', '_')}_{path.stem}")
+
+
+def load_file_module(path: Path, mod_name: str) -> ModuleType:
+    """Import a Python file by path under a unique module name (cached)."""
     if mod_name in sys.modules:
         return sys.modules[mod_name]
     spec = importlib.util.spec_from_file_location(mod_name, path)

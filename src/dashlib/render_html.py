@@ -41,6 +41,12 @@ table.el-table { width: 100%; border-collapse: collapse; }
 table.el-table th { text-align: left; border-bottom: 2px solid var(--rule); padding: 4px 8px 4px 0; }
 table.el-table td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--muted); }
 hr.el-divider { border: 0; border-top: 2px solid var(--rule); }
+.el-stats { display: flex; border-top: 2px solid var(--rule); border-bottom: 2px solid var(--rule); }
+.el-stats .b { flex: 1 1 0; text-align: center; padding: 10px 6px; }
+.el-stats .b + .b { border-left: 2px solid var(--rule); }
+.el-stats .v { font-size: 2.4em; font-weight: 700; line-height: 1.1; }
+.el-stats .s { font-size: .5em; font-weight: 400; }
+.el-stats .l { font-size: 1.05em; } .el-stats .c { font-size: .8em; color: var(--muted); }
 .el-unknown { color: var(--muted); font-style: italic; }
 """
 
@@ -85,7 +91,7 @@ def render(layout: list[dict], footer: dict, tz: tzinfo, title: str) -> str:
         css=CSS,
         body="\n".join(parts),
         footer_class="stale" if footer.get("stale") else "",
-        footer=escape(footer.get("text", "")),
+        footer=escape(" · ".join(t for t in (footer.get("text", ""), footer.get("note", "")) if t)),
     )
 
 

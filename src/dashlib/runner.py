@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
@@ -31,6 +33,15 @@ DUE_SLACK = timedelta(seconds=60)
 
 # File written for each output kind inside output/<visibility>/<name>/.
 OUTPUT_FILES = {"png": "dashboard.png", "html": "index.html"}
+
+# Kindle delivery: output/kindle/ is the only folder served to the Kindle and
+# holds exactly these files (plus an optional "stop" file you create by hand,
+# which kindle_run.sh treats as a stop switch). Temporary files are staged in a
+# sibling folder so the served folder never contains partial files.
+KINDLE_DIR = "kindle"
+KINDLE_STAGING_DIR = ".kindle-staging"
+KINDLE_FILES = ("dashboard.png", "kindle_run.sh")
+KINDLE_ALLOWED_EXTRA = ("stop",)
 
 
 @dataclass
@@ -94,14 +105,52 @@ def _is_due(st: state_mod.State, dash: Dashboard, now: datetime) -> bool:
     return now - last + DUE_SLACK >= timedelta(minutes=dash.refresh_minutes)
 
 
-def _check_layout(items) -> list[dict]:
+def _check_layout(result) -> tuple[list[dict], str]:
+    """layout() returns either a list of elements, or
+    {"elements": [...], "footer_note": "..."} to add a note (for example a
+    data source attribution) to the footer."""
+    note = ""
+    items = result
+    if isinstance(result, dict):
+        items = result.get("elements")
+        note = str(result.get("footer_note") or "")
     if not isinstance(items, list) or not all(isinstance(i, dict) and "type" in i for i in items):
         raise TypeError("layout() must return a list of dicts that each have a 'type'")
-    return items
+    return items, note
+
+
+def kindle_publish(png_path: Path, output_root: Path, kindle_script: Path | None) -> Path:
+    """Copy the PNG (and the Kindle script) into output/kindle/ atomically."""
+    serve = (output_root / KINDLE_DIR).resolve()
+    public = (output_root / "public").resolve()
+    if serve == public or public in serve.parents:
+        raise SafetyError(f"kindle folder {serve} may not be inside {public}")
+    staging = (output_root / KINDLE_STAGING_DIR).resolve()
+    _ensure_git_ignored(serve)
+    _ensure_git_ignored(staging)
+    serve.mkdir(parents=True, exist_ok=True)
+    staging.mkdir(parents=True, exist_ok=True)
+
+    sources = {"dashboard.png": png_path}
+    if kindle_script is not None and kindle_script.is_file():
+        sources["kindle_run.sh"] = kindle_script
+    else:
+        log.warning("kindle script %s not found; only the PNG was published", kindle_script)
+    for name, src in sources.items():
+        tmp = staging / name
+        shutil.copyfile(src, tmp)
+        os.replace(tmp, serve / name)  # same filesystem: atomic rename
+
+    extra = sorted(p.name for p in serve.iterdir()
+                   if p.name not in KINDLE_FILES + KINDLE_ALLOWED_EXTRA)
+    if extra:
+        log.warning("unexpected files in %s (served to the Kindle!): %s", serve, ", ".join(extra))
+    return serve / "dashboard.png"
 
 
 def run_dashboard(dash: Dashboard, config: Config, *, output_root: Path,
-                  state_root: Path, force: bool = True) -> Result:
+                  state_root: Path, force: bool = True,
+                  kindle_script: Path | None = None) -> Result:
     now = utc_now()
     ctx = RunContext(name=dash.name, settings=config.for_dashboard(dash.name),
                      tz=config.tz, now=now)
@@ -123,12 +172,13 @@ def run_dashboard(dash: Dashboard, config: Config, *, output_root: Path,
 
     st.last_attempt_at = now.isoformat()
     items = footer = None
+    note = ""
     status, message = "ok", ""
 
     try:
         data = fetch_mod.fetch(ctx)
         data = json.loads(json.dumps(data))  # enforce plain JSON data
-        items = _check_layout(layout_mod.layout(data, ctx))
+        items, note = _check_layout(layout_mod.layout(data, ctx))
         st.last_good_at, st.last_good_data, st.last_error = now.isoformat(), data, None
         footer = {"text": f"Updated {ctx.format_time(now)}", "stale": False}
     except Exception as exc:  # noqa: BLE001 - any dashboard failure is handled the same way
@@ -137,7 +187,7 @@ def run_dashboard(dash: Dashboard, config: Config, *, output_root: Path,
         items = None
         if st.last_good_data is not None:
             try:
-                items = _check_layout(layout_mod.layout(st.last_good_data, ctx))
+                items, note = _check_layout(layout_mod.layout(st.last_good_data, ctx))
                 since = ctx.format_time(st.last_good_at)
                 footer = {"text": f"STALE since {since} (update failed)", "stale": True}
                 status, message = "stale", f"showing data from {since}"
@@ -158,11 +208,14 @@ def run_dashboard(dash: Dashboard, config: Config, *, output_root: Path,
         footer = {"text": f"STALE: no data, last try {ctx.format_time(now)}", "stale": True}
         status, message = "failed", "no data yet; drew placeholder"
 
+    footer["note"] = note
     files = []
     if "png" in dash.outputs:
         p = out_dir / OUTPUT_FILES["png"]
         render_png.write_png(render_png.render(items, footer, config.tz), p)
         files.append(p)
+        if dash.kindle_publish:
+            files.append(kindle_publish(p, output_root, kindle_script))
     if "html" in dash.outputs:
         p = out_dir / OUTPUT_FILES["html"]
         render_html.write_html(render_html.render(items, footer, config.tz, dash.title), p)

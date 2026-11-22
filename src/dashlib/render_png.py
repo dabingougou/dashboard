@@ -148,30 +148,58 @@ class Canvas:
         self.y += px
 
 
-def _draw_footer(canvas: Canvas, footer: dict, truncated: bool) -> None:
+def _footer_lines(canvas: Canvas, footer: dict, truncated: bool) -> list[tuple[str, str]]:
+    """Plan the footer: [(main, note)] on one line if both fit, else two lines."""
+    main = footer.get("text", "")
+    if truncated:
+        main += "  (more not shown)"
+    note = footer.get("note", "")
+    if not note:
+        return [(main, "")]
+    mfont = canvas.font("footer", bold=footer.get("stale", False))
+    nfont = canvas.font("footer")
+    need = canvas.text_width(main, mfont) + 16 + 24 + canvas.text_width(note, nfont)
+    if need <= canvas.width:
+        return [(main, note)]
+    return [(main, ""), ("", note)]
+
+
+def _footer_height(n_lines: int) -> int:
+    return FOOTER_HEIGHT + (n_lines - 1) * 32
+
+
+def _draw_footer(canvas: Canvas, footer: dict, lines: list[tuple[str, str]]) -> None:
     d = canvas.draw
-    top = HEIGHT - MARGIN - FOOTER_HEIGHT
+    top = HEIGHT - MARGIN - _footer_height(len(lines))
     # Clear anything an oversized element drew into the footer zone.
     d.rectangle([0, top, WIDTH, HEIGHT], fill=WHITE)
     d.line([canvas.x0, top + 4, canvas.x1, top + 4], fill=BLACK, width=2)
-    font = canvas.font("footer", bold=footer.get("stale", False))
+    stale = footer.get("stale", False)
+    mfont = canvas.font("footer", bold=stale)
+    nfont = canvas.font("footer")
+    lh = canvas.line_height(mfont)
     ty = top + 14
-    text = footer.get("text", "")
-    if truncated:
-        text += "  (more not shown)"
-    text = canvas.ellipsize(text, font, canvas.width - 16)
-    if footer.get("stale"):
-        # Inverted box so the stale note is unmistakable on e ink.
-        w = canvas.text_width(text, font)
-        lh = canvas.line_height(font)
-        d.rectangle([canvas.x0, ty - 4, canvas.x0 + w + 16, ty + lh], fill=BLACK)
-        d.text((canvas.x0 + 8, ty), text, font=font, fill=WHITE)
-    else:
-        d.text((canvas.x0, ty), text, font=font, fill=BLACK)
+    for main, note in lines:
+        nw = canvas.text_width(note, nfont) if note else 0
+        if note:
+            d.text((canvas.x1 - nw, ty), note, font=nfont, fill=BLACK)
+        if main:
+            room = canvas.width - 16 - (nw + 24 if note else 0)
+            text = canvas.ellipsize(main, mfont, room)
+            if stale:
+                # Inverted box so the stale note is unmistakable on e ink.
+                w = canvas.text_width(text, mfont)
+                d.rectangle([canvas.x0, ty - 4, canvas.x0 + w + 16, ty + lh], fill=BLACK)
+                d.text((canvas.x0 + 8, ty), text, font=mfont, fill=WHITE)
+            else:
+                d.text((canvas.x0, ty), text, font=mfont, fill=BLACK)
+        ty += 32
 
 
 def render(layout: list[dict], footer: dict, tz: tzinfo) -> Image.Image:
     canvas = Canvas(tz)
+    # Reserve room for the footer (two lines if a note doesn't fit beside it).
+    canvas.bottom = HEIGHT - MARGIN - _footer_height(len(_footer_lines(canvas, footer, True)))
     truncated = False
     for el in layout:
         if canvas.y >= canvas.bottom:
@@ -188,7 +216,7 @@ def render(layout: list[dict], footer: dict, tz: tzinfo) -> Image.Image:
         truncated = True
     if truncated:
         log.warning("layout taller than the screen; content was cut off")
-    _draw_footer(canvas, footer, truncated)
+    _draw_footer(canvas, footer, _footer_lines(canvas, footer, truncated))
     return canvas.image
 
 

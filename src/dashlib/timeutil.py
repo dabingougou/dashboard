@@ -25,6 +25,7 @@ def format_time(value: datetime | str, tz: tzinfo, style: str = "datetime") -> s
     style: "datetime" -> "Fri Nov 20, 21:05 PST"
            "date"     -> "Fri Nov 20"
            "time"     -> "21:05"
+           "hour"     -> "3 pm"
     """
     dt = to_datetime(value).astimezone(tz)
     date = f"{dt:%a %b} {dt.day}"
@@ -32,4 +33,6 @@ def format_time(value: datetime | str, tz: tzinfo, style: str = "datetime") -> s
         return date
     if style == "time":
         return f"{dt:%H:%M}"
+    if style == "hour":
+        return f"{dt.hour % 12 or 12} {'am' if dt.hour < 12 else 'pm'}"
     return f"{date}, {dt:%H:%M} {dt:%Z}".rstrip()
