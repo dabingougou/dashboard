@@ -302,45 +302,33 @@ def layout(data: dict, ctx) -> list[dict]:
 
     temp_now, temp_later = data.get("temp_now"), data.get("temp_later")
     code = data.get("code_now")
-    temp_block = {
-        "icon": condition_icon(code),
-        "icon_alt": condition(code),
-        "value": _deg(temp_now) if temp_now is not None else "--",
-        "secondary": _later_temps(temp_later),
-        "size": 92,
-    }
-
     wind, wind_later = data.get("wind_now"), data.get("wind_later")
-    wind_block = {
-        "icon": "wind",
-        "icon_alt": "Wind",
-        "value": str(_round(wind)) if wind is not None else "",
-        "secondary": str(_round(wind_later)) if wind_later is not None else None,
-        "unit": data.get("wind_unit", ""),
-        "size": 56,
-        "hidden": wind is None,
-    }
 
     rain_max = data.get("rain_max")
-    show_rain = rain_max is not None and rain_max >= data.get("rain_threshold", 20)
-    when = ""
-    if show_rain:
+    note = None
+    if rain_max is not None and rain_max >= data.get("rain_threshold", 20):
         if data.get("rain_is_now") or not data.get("rain_time"):
             when = "now"
         else:
             when = f"by {ctx.format_time(data['rain_time'], 'hour')}"
-    rain_block = {
-        "icon": "drop",
-        "icon_alt": "Chance of rain",
-        "value": f"{_round(rain_max)}%" if show_rain else "",
-        "caption": when,
-        "size": 56,
-        "hidden": not show_rain,
-    }
+        note = {"icon": "drop", "value": f"{_round(rain_max)}%", "caption": when}
+
+    side = []
+    if wind is not None:
+        side.append({"icon": "wind", "value": str(_round(wind)),
+                     "secondary": str(_round(wind_later)) if wind_later is not None else None,
+                     "unit": data.get("wind_unit", "")})
+    later = _later_temps(temp_later)
+    if later:
+        side.append({"value": f"({later})", "size": 46, "bold": False})
 
     out = []
     if data.get("sample"):
         out.append({"type": "text", "text": "SAMPLE weather (simulate: true), not real",
                     "size": "small", "bold": True})
-    out.append({"type": "stats", "blocks": [temp_block, wind_block, rain_block]})
+    # Big current temperature; condition icon with the rain chance under it
+    # (only when rain reaches the threshold); wind and later temperatures on the right.
+    out.append({"type": "hero", "value": _deg(temp_now) if temp_now is not None else "--",
+                "icon": condition_icon(code), "icon_alt": condition(code),
+                "note": note, "side": side})
     return out

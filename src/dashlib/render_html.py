@@ -29,6 +29,11 @@ h1.el-title { font-size: 2.1em; line-height: 1.15; margin: 0 0 4px;
   padding-bottom: 6px; border-bottom: 4px solid var(--rule); }
 h1.el-title .tags { float: right; list-style: none; margin: 0; padding: 0;
   font-size: .4em; line-height: 1.3; text-align: right; }
+h1.el-title .tags.row li { display: inline; margin-left: .8em; }
+.el-hero { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+.el-hero .col { text-align: center; } .el-hero .n { font-size: 1.1em; }
+.el-hero .v { font-size: 6em; font-weight: 700; line-height: 1; }
+.el-hero .side .r { font-size: 1.6em; line-height: 1.3; } .el-hero .s, .el-hero .u { font-size: .65em; }
 .el-subtitle { color: var(--muted); margin: 4px 0 0; }
 .el-banner { background: var(--fg); color: var(--bg); font-weight: 700; text-align: center;
   padding: 8px 12px; letter-spacing: .05em; }

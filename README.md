@@ -165,23 +165,23 @@ don't change. An unknown type draws a small placeholder instead of crashing.
 ## The `today` dashboard
 
 A private screen for the Kindle (refreshes every 15 minutes, `kindle_publish:
-true`). It shows a large date line, then its sections (for now only
-`weather`), then empty space for future sections, then the footer.
+true`). It shows a compact date line (with tags for what changes tomorrow at
+its right), then its sections (for now only `weather`), then empty space for
+future sections, then the footer.
 
 Weather comes from the [Open-Meteo](https://open-meteo.com/) forecast API (free,
 no key; credit shown in the footer unless `source_notes: false` is set for a
-private screen). It uses only the standard library,
-with a 15 second timeout. The band shows up to three blocks:
+private screen). It uses only the standard library, with a 15 second timeout.
+The weather row (a `hero` element) shows:
 
-- **Temperature:** a condition icon (mapped from the WMO weather code), the
-  current value and, in parentheses, the forecasts for 3 and 6 hours later
-  (`10° (8°/6°)`).
-- **Wind:** a wind icon, the current speed, the forecast 3 hours later in
-  parentheses, and the unit under it (`5 (12)` over `km/h`).
-- **Rain:** a drop icon and the chance, with the hour of the peak under it
-  ("by 3 pm"). Shown only when the highest precipitation probability over the
-  current hour and the next 3 is at or above `rain_threshold_percent`.
-  Otherwise the block is left out and the others use the space.
+- the current temperature, very large, with a condition icon (from the WMO
+  weather code) on its left;
+- under the icon, the highest rain chance over the current hour and the next 3
+  with the hour of the peak (`40%`, "by 3 pm"), only when it is at or above
+  `rain_threshold_percent`;
+- on the right, the wind now with the 3 hour forecast in parentheses and the
+  unit (`9 (5) km/h`), and below it the temperatures 3 and 6 hours later
+  (`(8°/6°)`).
 
 With `tomorrow_tags: true`, short tags beside the date say what changes
 tomorrow compared with today: `warmer`/`cooler` (high temperature, 3° or more),
