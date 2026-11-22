@@ -1,0 +1,8 @@
+# Personal "today" screen for the Kindle. Built from sections listed in
+# config.yaml under dashboards.today.sections.
+name: today
+title: Today
+visibility: private       # never published; output stays in output/private/ and output/kindle/
+refresh_minutes: 15
+outputs: [png, html]      # html only for local viewing
+kindle_publish: true      # also copy the PNG to output/kindle/ (only one dashboard may set this)
