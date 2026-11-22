@@ -16,6 +16,9 @@ dashboards:
   today:
     # Sections shown on the "today" screen, top to bottom.
     sections: [weather]
+    # false -> no data source credits in the footer. Fine for a private screen;
+    # keep true for anything shared or public (Open-Meteo requires credit).
+    source_notes: true
     weather:
       latitude:               # decimal degrees, e.g. 12.3456 (keep the real value only in config.yaml)
       longitude:

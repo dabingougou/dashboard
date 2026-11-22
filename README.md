@@ -77,6 +77,7 @@ config error. Use `-v` for full tracebacks.
    or `{"elements": [...], "footer_note": "..."}` to add a note such as a data
    source attribution to the footer.
    Format every time with `ctx.format_time(value, style="datetime"|"date"|"time"|"hour")`
+   ("Nov 22, 2:26 pm", "Sun Nov 22", "14:26", "2 pm")
    so it shows in the configured timezone. See `src/dashlib/elements/builtin.py`
    for the built in types and their fields.
 5. If it needs settings or secrets, add a blank entry under `dashboards:` in
@@ -168,7 +169,8 @@ true`). It shows a large date line, then its sections (for now only
 `weather`), then empty space for future sections, then the footer.
 
 Weather comes from the [Open-Meteo](https://open-meteo.com/) forecast API (free,
-no key, attribution shown in the footer). It uses only the standard library,
+no key; credit shown in the footer unless `source_notes: false` is set for a
+private screen). It uses only the standard library,
 with a 15 second timeout. The band shows up to three blocks:
 
 - **Temperature:** a condition icon (mapped from the WMO weather code), the

@@ -22,7 +22,7 @@ def to_datetime(value: datetime | str) -> datetime:
 def format_time(value: datetime | str, tz: tzinfo, style: str = "datetime") -> str:
     """Format a time in the dashboard timezone.
 
-    style: "datetime" -> "Fri Nov 20, 21:05 PST"
+    style: "datetime" -> "Nov 20, 9:05 pm"
            "date"     -> "Fri Nov 20"
            "time"     -> "21:05"
            "hour"     -> "3 pm"
@@ -35,4 +35,4 @@ def format_time(value: datetime | str, tz: tzinfo, style: str = "datetime") -> s
         return f"{dt:%H:%M}"
     if style == "hour":
         return f"{dt.hour % 12 or 12} {'am' if dt.hour < 12 else 'pm'}"
-    return f"{date}, {dt:%H:%M} {dt:%Z}".rstrip()
+    return f"{dt:%b} {dt.day}, {dt.hour % 12 or 12}:{dt:%M} {'am' if dt.hour < 12 else 'pm'}"
