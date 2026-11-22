@@ -21,3 +21,6 @@ state/
 *.swp
 .idea/
 .vscode/
+
+# Service logs (deploy/)
+logs/

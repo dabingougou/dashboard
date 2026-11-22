@@ -1,0 +1,12 @@
+# Runs dashboard-refresh.service every 5 minutes, and once shortly after boot.
+[Unit]
+Description=Dashboard: refresh every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*:0/5
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

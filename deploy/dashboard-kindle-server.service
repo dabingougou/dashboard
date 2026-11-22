@@ -1,0 +1,20 @@
+# Serves output/kindle/ (and nothing else) to the Kindle on the home network.
+# User level unit: install as described in deploy/README.md.
+[Unit]
+Description=Dashboard: serve output/kindle/ to the Kindle (LAN only)
+# Keep retrying forever: at boot the LAN address may not exist yet.
+StartLimitIntervalSec=0
+
+[Service]
+# Bound to the Pi's LAN address only (not 0.0.0.0, not IPv6, not the VPN).
+# The address must match BASE in kindle/dashboard.sh and kindle/kindle_run.sh.
+ExecStart=/usr/bin/python3 -m http.server 8080 --bind 192.168.0.2 --directory %h/github/dashboard/output/kindle
+# http.server writes one line per request to stderr; keep it in a file.
+StandardOutput=append:%h/github/dashboard/logs/kindle-server.log
+StandardError=append:%h/github/dashboard/logs/kindle-server.log
+Restart=always
+RestartSec=15
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

@@ -14,6 +14,9 @@ working style), then docs/kindle_setup.md if you need Kindle background.
   there is no service yet. The location is not set (`latitude`, `longitude` blank).
 - The owner will install tmux himself and then run the server and this session
   inside it.
+- Task C is done: location set locally, Pi tzdata updated to 2026f (BC is on
+  UTC-7 all year).
+- Task D files are in `deploy/` (not installed yet).
 - Task B is done (2026-11-22): the weather band uses icons from
   `src/dashlib/icons.py` and the reworked `stats` element.
 
@@ -66,7 +69,7 @@ Set `simulate: false` and run `run.py today` once to confirm the real Open-Meteo
 request works. Report only the temperature, wind and rain chance it produced, not
 the coordinates.
 
-## Task D: serve the Kindle folder and schedule the refresh (prepare, do not install)
+## Task D: serve the Kindle folder and schedule the refresh (files ready in deploy/)
 
 Goal: `output/kindle/` is the only folder served to the Kindle, a refresh runs on
 its own, and everything restarts after a reboot, with no terminal window needed.

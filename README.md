@@ -18,6 +18,7 @@ run.py                    command line entry point
 config.example.yaml       committed template; copy to config.yaml (git ignored)
 requirements.txt          Pillow, PyYAML
 scripts/setup.sh          rebuild the environment on a fresh machine
+deploy/                   user systemd units: Kindle server + 5 minute refresh (see deploy/README.md)
 kindle/kindle_run.sh      script that runs on the Kindle (fetches dashboard.png in a loop)
 src/dashlib/
   config.py               loads config.yaml (timezone + per dashboard settings)

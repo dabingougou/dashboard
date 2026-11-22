@@ -1,0 +1,11 @@
+# One refresh pass over the private dashboards. Started by dashboard-refresh.timer.
+[Unit]
+Description=Dashboard: refresh private dashboards that are due
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/github/dashboard
+# --all runs only dashboards whose refresh_minutes have passed.
+ExecStart=%h/github/dashboard/.venv/bin/python run.py --all --visibility private
+TimeoutStartSec=120
+NoNewPrivileges=yes
