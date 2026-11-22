@@ -16,7 +16,8 @@ working style), then docs/kindle_setup.md if you need Kindle background.
   inside it.
 - Task C is done: location set locally, Pi tzdata updated to 2026f (BC is on
   UTC-7 all year).
-- Task D files are in `deploy/` (not installed yet).
+- Task D is installed (2026-11-22): user units from `deploy/` are enabled,
+  lingering is on, the server listens on 192.168.0.2:8080 only.
 - Task B is done (2026-11-22): the weather band uses icons from
   `src/dashlib/icons.py` and the reworked `stats` element.
 
