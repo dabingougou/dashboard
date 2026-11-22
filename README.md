@@ -111,18 +111,29 @@ shows its last good data with the stale note.
 
 ### The `stats` element
 
-A generic row of side by side blocks. Each block has a big `value`, an optional
-`secondary` value shown in parentheses, an optional short `label`, an optional
-small `caption`, and can be `hidden`. Hidden blocks are dropped and the visible
-ones share the width. Values shrink automatically to fit.
+A generic row of side by side blocks. Each block has an optional `icon` (a name
+from `dashlib.icons`, with `icon_alt` as its text for the HTML page), a big
+`value`, an optional `secondary` value shown in parentheses, and optional small
+lines under the value: `unit`, `label`, `caption`. `size` sets the value size in
+pixels. A block can be `hidden`: hidden blocks are dropped and the visible ones
+are spread evenly across the width. If the blocks would not fit, they all
+shrink together.
 
 ```python
 {"type": "stats", "blocks": [
-    {"value": "7°", "secondary": "5°", "label": "Clear", "caption": "now (+3h)"},
-    {"value": "18 km/h", "caption": "Wind"},
-    {"value": "Rain 40%", "caption": "by 3 pm", "hidden": False},
+    {"icon": "partly_cloudy", "value": "7°", "secondary": "5°", "size": 92},
+    {"icon": "wind", "value": "18", "unit": "km/h", "size": 56},
+    {"icon": "drop", "value": "40%", "caption": "by 3 pm", "size": 56, "hidden": False},
 ]}
 ```
+
+### Icons
+
+`src/dashlib/icons.py` holds a small icon registry: sun, partly_cloudy, cloud,
+fog, drizzle, rain, snow, thunder, wind, drop. Each icon is one function drawn
+with plain shapes (thick black strokes, smoothed by drawing large and scaling
+down), and the same function also produces inline SVG for HTML pages. Add one
+with `icons.register(name, draw_fn, aspect)`.
 
 ### Adding element types (charts and so on)
 
@@ -159,18 +170,20 @@ Weather comes from the [Open-Meteo](https://open-meteo.com/) forecast API (free,
 no key, attribution shown in the footer). It uses only the standard library,
 with a 15 second timeout. The band shows up to three blocks:
 
-- **Temperature:** current value and, in parentheses, the value 3 hours later,
-  with a condition word mapped from the WMO weather code.
-- **Wind:** current speed.
-- **Rain:** shown only when the highest precipitation probability over the current
-  hour and the next 3 is at or above `rain_threshold_percent`, with the hour
-  of the peak ("by 3 pm"). Otherwise the block is left out.
+- **Temperature:** a condition icon (mapped from the WMO weather code), the
+  current value and, in parentheses, the value 3 hours later.
+- **Wind:** a wind icon, the current speed, and the unit under it.
+- **Rain:** a drop icon and the chance, with the hour of the peak under it
+  ("by 3 pm"). Shown only when the highest precipitation probability over the
+  current hour and the next 3 is at or above `rain_threshold_percent`.
+  Otherwise the block is left out and the others use the space.
 
 Settings live under `dashboards.today.weather` in `config.yaml` (see
 `config.example.yaml`). Put your real `latitude`/`longitude` only in
 `config.yaml`. If they are blank, the screen shows "Weather: set location in
 config.yaml". Set `simulate: true` to draw clearly labeled SAMPLE weather
-with no network.
+with no network. `simulate_rain_percent` sets the simulated peak rain chance, so
+setting it below the threshold previews the dry look.
 
 ## Kindle delivery
 

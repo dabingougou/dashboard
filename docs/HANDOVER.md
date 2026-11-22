@@ -14,6 +14,8 @@ working style), then docs/kindle_setup.md if you need Kindle background.
   there is no service yet. The location is not set (`latitude`, `longitude` blank).
 - The owner will install tmux himself and then run the server and this session
   inside it.
+- Task B is done (2026-11-22): the weather band uses icons from
+  `src/dashlib/icons.py` and the reworked `stats` element.
 
 ## Task A: get oriented (do this first)
 
@@ -21,7 +23,7 @@ working style), then docs/kindle_setup.md if you need Kindle background.
 2. Confirm the `today` dashboard still renders with `simulate: true` in the local
    `config.yaml`. Report the PNG path and size.
 
-## Task B: redesign the weather band
+## Task B: redesign the weather band (done)
 
 The owner reviewed a mockup and wants this look. The reference drawing code is in
 `docs/reference/weather_band_mockup.py` (run it to see the picture; reuse or adapt

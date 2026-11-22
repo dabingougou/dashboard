@@ -6,6 +6,8 @@ Config (dashboards.today.weather in config.yaml):
     wind_unit                kmh | ms | mph | kn    (default kmh)
     rain_threshold_percent   show the rain block at or above this (default 20)
     simulate                 true -> fake SAMPLE values, no network
+    simulate_rain_percent    with simulate: peak rain chance to fake (default 40),
+                             so both the rain shown and the dry look can be previewed
 
 Data source: https://open-meteo.com/ (free, no key; attribution required).
 """
@@ -40,11 +42,23 @@ _WMO = {
 }
 
 
+# Condition word -> icon name (see dashlib.icons).
+_ICON = {
+    "Clear": "sun", "Partly cloudy": "partly_cloudy", "Overcast": "cloud",
+    "Fog": "fog", "Drizzle": "drizzle", "Rain": "rain", "Showers": "rain",
+    "Snow": "snow", "Thunderstorm": "thunder",
+}
+
+
 def condition(code) -> str:
     try:
         return _WMO.get(int(code), "")
     except (TypeError, ValueError):
         return ""
+
+
+def condition_icon(code) -> str | None:
+    return _ICON.get(condition(code))
 
 
 # ----- fetch ---------------------------------------------------------------
@@ -78,17 +92,25 @@ def _settings(config: dict) -> dict:
     threshold = 20 if _blank(threshold) else _num(threshold)
     if threshold is None:
         raise ValueError("weather.rain_threshold_percent must be a number")
-    return {"temp_unit": temp_unit, "wind_unit": wind_unit, "threshold": threshold}
+    sim_rain = config.get("simulate_rain_percent")
+    sim_rain = 40 if _blank(sim_rain) else _num(sim_rain)
+    if sim_rain is None or not 0 <= sim_rain <= 100:
+        raise ValueError("weather.simulate_rain_percent must be a number from 0 to 100")
+    return {"temp_unit": temp_unit, "wind_unit": wind_unit, "threshold": threshold,
+            "sim_rain": sim_rain}
 
 
 def _simulated(config: dict, s: dict) -> dict:
     tz = ZoneInfo(config.get("timezone") or "UTC")
     hour = datetime.now(tz).replace(minute=0, second=0, microsecond=0)
+    # Peak at +2h; the other hours are lower, so the peak hour is unambiguous.
+    peak = s["sim_rain"]
+    probs = [round(peak * k) for k in (0.25, 0.6, 1.0, 0.75)]
     return {
         "time": [(hour + timedelta(hours=i)).isoformat() for i in range(HOURS_AHEAD + 1)],
         "current": {"temperature_2m": 7.2, "wind_speed_10m": 18.4, "weather_code": 2},
         "hourly": {"temperature_2m": [7.0, 6.4, 5.8, 5.1],
-                   "precipitation_probability": [10, 25, 40, 30],
+                   "precipitation_probability": probs,
                    "weather_code": [2, 3, 61, 61]},
     }
 
@@ -187,17 +209,22 @@ def layout(data: dict, ctx) -> list[dict]:
         return [{"type": "text", "text": "Weather: set location in config.yaml", "size": "small"}]
 
     temp_now, temp_later = data.get("temp_now"), data.get("temp_later")
+    code = data.get("code_now")
     temp_block = {
+        "icon": condition_icon(code),
+        "icon_alt": condition(code),
         "value": _deg(temp_now) if temp_now is not None else "--",
         "secondary": _deg(temp_later) if temp_later is not None else None,
-        "label": condition(data.get("code_now")) or None,
-        "caption": "now (+3h)" if temp_later is not None else "now",
+        "size": 92,
     }
 
     wind = data.get("wind_now")
     wind_block = {
-        "value": f"{_round(wind)} {data.get('wind_unit', '')}".strip() if wind is not None else "",
-        "caption": "Wind",
+        "icon": "wind",
+        "icon_alt": "Wind",
+        "value": str(_round(wind)) if wind is not None else "",
+        "unit": data.get("wind_unit", ""),
+        "size": 56,
         "hidden": wind is None,
     }
 
@@ -210,8 +237,11 @@ def layout(data: dict, ctx) -> list[dict]:
         else:
             when = f"by {ctx.format_time(data['rain_time'], 'hour')}"
     rain_block = {
-        "value": f"Rain {_round(rain_max)}%" if show_rain else "",
+        "icon": "drop",
+        "icon_alt": "Chance of rain",
+        "value": f"{_round(rain_max)}%" if show_rain else "",
         "caption": when,
+        "size": 56,
         "hidden": not show_rain,
     }
 

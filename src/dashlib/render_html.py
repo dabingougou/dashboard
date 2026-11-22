@@ -41,12 +41,12 @@ table.el-table { width: 100%; border-collapse: collapse; }
 table.el-table th { text-align: left; border-bottom: 2px solid var(--rule); padding: 4px 8px 4px 0; }
 table.el-table td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--muted); }
 hr.el-divider { border: 0; border-top: 2px solid var(--rule); }
-.el-stats { display: flex; border-top: 2px solid var(--rule); border-bottom: 2px solid var(--rule); }
-.el-stats .b { flex: 1 1 0; text-align: center; padding: 10px 6px; }
-.el-stats .b + .b { border-left: 2px solid var(--rule); }
-.el-stats .v { font-size: 2.4em; font-weight: 700; line-height: 1.1; }
-.el-stats .s { font-size: .5em; font-weight: 400; }
-.el-stats .l { font-size: 1.05em; } .el-stats .c { font-size: .8em; color: var(--muted); }
+.el-stats { display: flex; flex-wrap: wrap; justify-content: space-around; align-items: flex-start; gap: 12px 24px; }
+.el-stats .b { display: flex; align-items: flex-start; gap: .35em; }
+.el-stats .icon { flex: none; margin-top: .15em; }
+.el-stats .v { font-weight: 700; line-height: 1.05; }
+.el-stats .s { font-size: .56em; font-weight: 400; }
+.el-stats .u, .el-stats .c { font-size: .85em; } .el-stats .l { font-size: 1em; }
 .el-unknown { color: var(--muted); font-style: italic; }
 """
 

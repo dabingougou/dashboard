@@ -23,6 +23,7 @@ dashboards:
       wind_unit: kmh              # kmh | ms | mph | kn
       rain_threshold_percent: 20  # show the rain block at or above this probability
       simulate: false             # true -> fake SAMPLE weather, no network
+      simulate_rain_percent: 40   # with simulate: peak rain chance (below the threshold -> dry look)
 
   # example_private_dashboard:
   #   api_token: ""

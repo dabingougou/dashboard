@@ -12,18 +12,25 @@ Element dicts (all text is plain strings; format times in the layout step):
                       "widths": [fraction, ...]?}
   {"type": "divider"}
   {"type": "spacer",  "height": int?}
-  {"type": "stats",   "blocks": [{"value": str, "secondary": str?, "label": str?,
-                                  "caption": str?, "hidden": bool?}, ...],
+  {"type": "stats",   "blocks": [{"value": str, "secondary": str?, "icon": str?,
+                                  "icon_alt": str?, "unit": str?, "label": str?,
+                                  "caption": str?, "size": int?, "hidden": bool?}, ...],
                       "max_size": int?}
-      A row of side by side stat blocks: big value, optional secondary value
-      shown in parentheses, optional short label, optional small caption.
-      Hidden blocks are dropped and the visible ones share the full width.
+      A row of side by side stat blocks. Each block: an optional icon (a name
+      from dashlib.icons), then a big value with an optional secondary value in
+      parentheses, then optional small lines under the value (unit, label,
+      caption). "size" is the value size in px (default max_size, else 72).
+      Hidden blocks are dropped; the visible ones are spread evenly across the
+      width and shrink together if they would not fit.
 """
 
 from __future__ import annotations
 
 from html import escape
 
+from PIL import ImageOps
+
+from .. import icons
 from . import register
 
 BLACK, WHITE = 0, 255
@@ -204,93 +211,119 @@ def spacer_html(page, el):
 
 
 # ----- stats ---------------------------------------------------------------
-STATS_MIN_VALUE_PX = 28
+STATS_DEFAULT_PX = 72       # value size when a block gives no "size"
+STATS_MIN_SCALE = 0.5       # shrink at most to half size before giving up
+STATS_MIN_GAP = 44          # minimum space between blocks
+STATS_EDGE = 0.25           # outer margin, as a fraction of the gap between blocks
 
 
 def _visible_blocks(el):
     return [b for b in (el.get("blocks") or []) if isinstance(b, dict) and not b.get("hidden")]
 
 
-def _fit_value(c, value, secondary, width, max_px):
-    """Largest value size where 'value (secondary)' fits in width."""
-    px = max_px
+def _block_px(b, el) -> int:
+    try:
+        return int(b.get("size") or el.get("max_size") or STATS_DEFAULT_PX)
+    except (TypeError, ValueError):
+        return STATS_DEFAULT_PX
+
+
+def _measure_block(c, b, px):
+    """Sizes and fonts for one block at value size px."""
+    m = {"value": _s(b.get("value")), "sec": _s(b.get("secondary"))}
+    m["vf"] = c.font(px, bold=True)
+    m["sf"] = c.font(max(18, round(px * 0.56)))
+    m["vw"] = c.text_width(m["value"], m["vf"])
+    m["sw"] = (px * 0.1 + c.text_width(f"({m['sec']})", m["sf"])) if m["sec"] else 0
+    top = m["vf"].getbbox(m["value"] or "0", anchor="ls")[1]
+    m["cap"] = max(1, -top)  # height of the value above its baseline
+
+    # Small lines under the value: unit, then label, then caption.
+    small_px = max(18, round(px * 0.42))
+    m["under"] = []
+    for key, f in (("unit", c.font(small_px)), ("label", c.font(max(20, round(px * 0.5)))),
+                   ("caption", c.font(small_px))):
+        if b.get(key):
+            m["under"].append((_s(b[key]), f))
+    m["under_gap"] = round(px * 0.14)
+    m["under_h"] = sum(c.line_height(f) for _, f in m["under"])
+
+    m["icon"] = None
+    ratio = icons.aspect(b.get("icon"))
+    if ratio:
+        ih = max(12, round(px * 0.85))
+        m["icon"] = (b["icon"], ih, round(ih * ratio))
+        m["icon_gap"] = round(px * 0.18)
+    text_w = max([m["vw"] + m["sw"]] + [c.text_width(t, f) for t, f in m["under"]])
+    m["text_w"] = text_w
+    m["w"] = text_w + ((m["icon"][2] + m["icon_gap"]) if m["icon"] else 0)
+    # Extent above and below the value's visual centre line.
+    half_icon = m["icon"][1] / 2 if m["icon"] else 0
+    m["above"] = max(m["cap"] / 2, half_icon)
+    below_text = m["cap"] / 2 + (m["under_gap"] + m["under_h"] if m["under"] else 0)
+    m["below"] = max(below_text, half_icon)
+    return m
+
+
+def _layout_stats(c, el, blocks):
+    n = len(blocks)
+    scale = 1.0
     while True:
-        vf = c.font(px, bold=True)
-        sf = c.font(max(22, round(px * 0.5)))
-        vw = c.text_width(value, vf)
-        sw = (c.text_width(f"({secondary})", sf) + px * 0.2) if secondary else 0
-        if vw + sw <= width or px <= STATS_MIN_VALUE_PX:
-            return vf, sf, vw, sw
-        px -= 2
-
-
-def _fit_label(c, text, width):
-    for px in (34, 30, 27, 24):
-        f = c.font(px)
-        if c.text_width(text, f) <= width:
-            return f, text
-    f = c.font(24)
-    return f, c.ellipsize(text, f, width)
+        ms = [_measure_block(c, b, max(12, round(_block_px(b, el) * scale))) for b in blocks]
+        need = sum(m["w"] for m in ms) + STATS_MIN_GAP * (n - 1 + 2 * STATS_EDGE)
+        if need <= c.width or scale <= STATS_MIN_SCALE:
+            return ms
+        scale -= 0.04
 
 
 def stats_png(c, el):
     blocks = _visible_blocks(el)
     if not blocks:
         return
-    n = len(blocks)
-    bw = c.width / n
-    pad = 10
-    inner = bw - 2 * pad
-    max_px = int(el.get("max_size", 96))
-
-    fitted = []
-    for b in blocks:
-        value, sec = _s(b.get("value")), _s(b.get("secondary"))
-        vf, sf, vw, sw = _fit_value(c, value, sec, inner, max_px)
-        label = _fit_label(c, _s(b.get("label")), inner) if b.get("label") else None
-        fitted.append((b, value, sec, vf, sf, vw, sw, label))
-
-    # Shared rows so values, labels and captions line up across blocks.
-    ascent = max(f[3].getmetrics()[0] for f in fitted)
-    descent = max(f[3].getmetrics()[1] for f in fitted)
-    baseline = c.y + ascent
-    row_y = baseline + descent + 6
-    label_h = max((c.line_height(f[7][0]) for f in fitted if f[7]), default=0)
-    cfont = c.font("footer")
-    caption_h = c.line_height(cfont) if any(f[0].get("caption") for f in fitted) else 0
-
-    for i, (b, value, sec, vf, sf, vw, sw, label) in enumerate(fitted):
-        left = c.x0 + i * bw
-        cx = left + bw / 2
-        x = cx - (vw + sw) / 2
-        c.draw.text((x, baseline), value, font=vf, fill=BLACK, anchor="ls")
-        if sec:
-            c.draw.text((x + vw + (sw - c.text_width(f"({sec})", sf)), baseline),
-                        f"({sec})", font=sf, fill=BLACK, anchor="ls")
-        y = row_y
-        if label:
-            c.draw.text((cx, y), label[1], font=label[0], fill=BLACK, anchor="ma")
-        y += label_h
-        if b.get("caption"):
-            cap = c.ellipsize(_s(b["caption"]), cfont, inner)
-            c.draw.text((cx, y), cap, font=cfont, fill=BLACK, anchor="ma")
-        if i > 0:
-            c.draw.line([left, c.y + 4, left, row_y + label_h + caption_h - 4], fill=BLACK, width=2)
-    c.y = row_y + label_h + caption_h
+    ms = _layout_stats(c, el, blocks)
+    n = len(ms)
+    # Equal gaps between blocks and a smaller margin at both ends.
+    free = max(0, c.width - sum(m["w"] for m in ms))
+    g = free / (n - 1 + 2 * STATS_EDGE)
+    centre = c.y + max(m["above"] for m in ms)
+    x = c.x0 + g * STATS_EDGE
+    for m in ms:
+        tx = x
+        if m["icon"]:
+            name, ih, iw = m["icon"]
+            img = icons.png(name, ih)
+            if img is not None:
+                top = round(centre - ih / 2)
+                # Use the icon as a mask so it never paints white over anything.
+                c.image.paste(BLACK, (round(x), top, round(x) + img.width, top + img.height),
+                              mask=ImageOps.invert(img))
+            tx = x + iw + m["icon_gap"]
+        baseline = centre + m["cap"] / 2
+        c.draw.text((tx, baseline), m["value"], font=m["vf"], fill=BLACK, anchor="ls")
+        if m["sec"]:
+            c.draw.text((tx + m["vw"] + m["sw"] - c.text_width(f"({m['sec']})", m["sf"]), baseline),
+                        f"({m['sec']})", font=m["sf"], fill=BLACK, anchor="ls")
+        y = baseline + m["under_gap"]
+        for text, f in m["under"]:
+            c.draw.text((tx, y), text, font=f, fill=BLACK)
+            y += c.line_height(f)
+        x += m["w"] + g
+    c.y = round(centre + max(m["below"] for m in ms))
 
 
 def stats_html(page, el):
     parts = []
     for b in _visible_blocks(el):
-        inner = f'<div class="v">{escape(_s(b.get("value")))}'
+        px = max(12, round(_block_px(b, el) * 0.6))
+        icon = icons.svg(b.get("icon"), round(px * 0.85), _s(b.get("icon_alt")))
+        inner = f'<div class="v" style="font-size:{px}px">{escape(_s(b.get("value")))}'
         if b.get("secondary"):
             inner += f' <span class="s">({escape(_s(b["secondary"]))})</span>'
         inner += "</div>"
-        if b.get("label"):
-            inner += f'<div class="l">{escape(_s(b["label"]))}</div>'
-        if b.get("caption"):
-            inner += f'<div class="c">{escape(_s(b["caption"]))}</div>'
-        parts.append(f'<div class="b">{inner}</div>')
+        for key, cls in (("unit", "u"), ("label", "l"), ("caption", "c")):
+            if b.get(key):
+                inner += f'<div class="{cls}">{escape(_s(b[key]))}</div>'
+        parts.append(f'<div class="b">{icon}<div class="t">{inner}</div></div>')
     return f'<div class="el el-stats">{"".join(parts)}</div>' if parts else ""
 
 
