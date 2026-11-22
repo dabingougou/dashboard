@@ -18,12 +18,14 @@ run.py                    command line entry point
 config.example.yaml       committed template; copy to config.yaml (git ignored)
 requirements.txt          Pillow, PyYAML
 scripts/setup.sh          rebuild the environment on a fresh machine
+kindle/kindle_run.sh      script that runs on the Kindle (fetches dashboard.png in a loop)
 src/dashlib/
   config.py               loads config.yaml (timezone + per dashboard settings)
   registry.py             finds and validates dashboards/*/dashboard.yaml
   runner.py               fetch -> layout -> render, stale fallback, safety checks
   elements/__init__.py    element type registry (type name -> PNG + HTML drawer)
-  elements/builtin.py     built in types: title, banner, text, kv, list, table, divider, spacer
+  elements/builtin.py     built in types: title, banner, text, kv, list, table, divider, spacer, stats
+  sections.py             helpers for dashboards made of independent sections
   render_png.py           Pillow renderer (Canvas used by PNG drawers)
   render_html.py          HTML page template
   state.py                last good data per dashboard
@@ -33,7 +35,9 @@ dashboards/<name>/
   fetch.py                fetch(ctx) -> JSON serializable data
   layout.py               layout(data, ctx) -> list of element dicts
   elements.py             optional: extra element types for this dashboard
+  sections/<section>.py   optional: section modules (see "Section based dashboards")
 output/<visibility>/<name>/   dashboard.png, index.html   (git ignored)
+output/kindle/                dashboard.png, kindle_run.sh (git ignored; the only folder served to the Kindle)
 state/<visibility>/<name>/    state.json                  (git ignored)
 ```
 
@@ -62,13 +66,16 @@ config error. Use `-v` for full tracebacks.
    visibility: private     # public | private
    refresh_minutes: 30
    outputs: [png]          # any of: png, html
+   kindle_publish: false   # optional, see "Kindle delivery"
    ```
 3. `fetch.py` defines `fetch(ctx)` and returns plain JSON data (dicts, lists,
    strings, numbers, bools, None). `ctx.settings` is this dashboard's block
    from `config.yaml`, and `ctx.now` is the run time (aware, UTC). Return times as
    ISO strings. Raise an exception on failure, and the runner handles it.
-4. `layout.py` defines `layout(data, ctx)` and returns a list of element dicts.
-   Format every time with `ctx.format_time(value, style="datetime"|"date"|"time")`
+4. `layout.py` defines `layout(data, ctx)` and returns a list of element dicts,
+   or `{"elements": [...], "footer_note": "..."}` to add a note such as a data
+   source attribution to the footer.
+   Format every time with `ctx.format_time(value, style="datetime"|"date"|"time"|"hour")`
    so it shows in the configured timezone. See `src/dashlib/elements/builtin.py`
    for the built in types and their fields.
 5. If it needs settings or secrets, add a blank entry under `dashboards:` in
@@ -78,6 +85,44 @@ config error. Use `-v` for full tracebacks.
 `dashboards/sample/` is a complete example. It uses fake, clearly labeled
 SAMPLE DATA and needs no network. Set `simulate_failure: true` for it in
 `config.yaml` to see the stale behaviour.
+
+### Section based dashboards
+
+A dashboard can be built from independent sections. The section list in
+`config.yaml` picks which ones run and in what order. `dashboards/today/` works this
+way. Each section is `dashboards/<name>/sections/<section>.py` with:
+
+```python
+FOOTER_NOTE = "Source: example.org"   # optional, added to the footer
+
+def fetch(config):        # the section's own block from config.yaml, plus "timezone"
+    return {...}          # plain JSON data
+
+def layout(data, ctx):    # returns a list of element dicts
+    return [...]
+```
+
+The dashboard's own `fetch.py`/`layout.py` just call
+`dashlib.sections.fetch_sections(...)` and `layout_sections(...)` (see
+`dashboards/today/`). To add a section (calendar, tasks and so on), drop a new
+file into `sections/` and add its name to `sections:` in `config.yaml`. Other
+sections stay untouched. If any section's fetch fails, the whole dashboard
+shows its last good data with the stale note.
+
+### The `stats` element
+
+A generic row of side by side blocks. Each block has a big `value`, an optional
+`secondary` value shown in parentheses, an optional short `label`, an optional
+small `caption`, and can be `hidden`. Hidden blocks are dropped and the visible
+ones share the width. Values shrink automatically to fit.
+
+```python
+{"type": "stats", "blocks": [
+    {"value": "7°", "secondary": "5°", "label": "Clear", "caption": "now (+3h)"},
+    {"value": "18 km/h", "caption": "Wind"},
+    {"value": "Rain 40%", "caption": "by 3 pm", "hidden": False},
+]}
+```
 
 ### Adding element types (charts and so on)
 
@@ -103,6 +148,48 @@ Put the code in `dashboards/<name>/elements.py` for one dashboard (the runner
 loads it automatically), or in a new module under `src/dashlib/elements/`
 imported from `elements/__init__.py` to share it. The runner and renderers
 don't change. An unknown type draws a small placeholder instead of crashing.
+
+## The `today` dashboard
+
+A private screen for the Kindle (refreshes every 15 minutes, `kindle_publish:
+true`). It shows a large date line, then its sections (for now only
+`weather`), then empty space for future sections, then the footer.
+
+Weather comes from the [Open-Meteo](https://open-meteo.com/) forecast API (free,
+no key, attribution shown in the footer). It uses only the standard library,
+with a 15 second timeout. The band shows up to three blocks:
+
+- **Temperature:** current value and, in parentheses, the value 3 hours later,
+  with a condition word mapped from the WMO weather code.
+- **Wind:** current speed.
+- **Rain:** shown only when the highest precipitation probability over the current
+  hour and the next 3 is at or above `rain_threshold_percent`, with the hour
+  of the peak ("by 3 pm"). Otherwise the block is left out.
+
+Settings live under `dashboards.today.weather` in `config.yaml` (see
+`config.example.yaml`). Put your real `latitude`/`longitude` only in
+`config.yaml`. If they are blank, the screen shows "Weather: set location in
+config.yaml". Set `simulate: true` to draw clearly labeled SAMPLE weather
+with no network.
+
+## Kindle delivery
+
+The Kindle runs `kindle/kindle_run.sh`, which downloads `dashboard.png` from
+the Pi every few minutes and redraws it when it changes. On the Pi side:
+
+- One dashboard may set `kindle_publish: true` in its `dashboard.yaml` (now
+  `today`). The runner fails with a clear error if more than one does.
+- Each time that dashboard renders its PNG, the runner copies it to
+  `output/kindle/dashboard.png` and copies `kindle/kindle_run.sh` to
+  `output/kindle/kindle_run.sh`. Files are first written to
+  `output/.kindle-staging/` and then renamed into place, so the Kindle never
+  downloads a half written file and the folder never holds temporary files.
+- `output/kindle/` should be the only folder served to the Kindle, and should
+  hold only those two files. The script also treats a file named `stop` there
+  as a stop switch (create it by hand). The runner warns if anything else
+  appears there, but never deletes files.
+- This repo does not start a web server. Serving `output/kindle/` (the script
+  expects `http://<pi>:8080/dashboard.png`) is set up separately.
 
 ## Timezone
 
@@ -173,5 +260,4 @@ Example user crontab line (`crontab -e`), shown here for reference only:
 # */5 *  *   *   *    cd $HOME/github/dashboard && .venv/bin/python run.py --all >> $HOME/github/dashboard/output/run.log 2>&1
 ```
 
-How the Kindle picks up `output/<visibility>/<name>/dashboard.png` (for example
-a local web server or file sync) is outside this repo and still to be decided.
+See "Kindle delivery" above for how the PNG reaches the Kindle.
