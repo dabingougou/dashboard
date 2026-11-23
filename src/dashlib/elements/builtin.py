@@ -41,6 +41,14 @@ Element dicts (all text is plain strings; format times in the layout step):
       every mark_every-th point, default 4, and the last one), bars under it
       (0..bar_max, default 100; solid black at or above bar_threshold, gray
       below), and the point labels along the bottom.
+  {"type": "days",    "columns": [{"title": str, "events": [{"time": str, "text": str}, ...],
+                                   "tasks": [str, ...], "tasks_more": bool?}, ...],
+                      "max_tasks": int?}
+      Side by side day columns that fill the rest of the screen: a bold
+      underlined heading, the events (time, then the bold title, wrapped), and
+      at the bottom of every column the tasks (at most max_tasks, default 2,
+      up to two lines each) with "…" when there are more. Events that do not
+      fit end with "+N more". An empty column stays blank.
       A side row is one item, or several side by side when it has "parts"
       (each part takes the same keys as a row; size and bold come from the row).
       Everything shrinks together if it would not fit the width.
@@ -590,11 +598,117 @@ def hero_html(page, el):
             f'<div class="v">{escape(_s(el.get("value")))}</div><div class="side">{rows}</div></div>')
 
 
+# ----- days ----------------------------------------------------------------
+DAYS_HEAD_PX = 28
+DAYS_TIME_PX = 24
+DAYS_EVENT_PX = 28
+DAYS_TASK_PX = 23
+DAYS_PAD = 14            # space between a column rule and its text
+DAYS_ITEM_GAP = 14
+DAYS_TASK_LINES = 2
+
+
+def _clip_lines(c, text, font, width, max_lines):
+    lines = c.wrap(text, font, width)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines - 1] + [c.ellipsize(" ".join(lines[max_lines - 1:]), font, width)]
+    return lines
+
+
+def days_png(c, el):
+    cols = [col for col in (el.get("columns") or []) if isinstance(col, dict)]
+    if not cols:
+        return
+    n = len(cols)
+    cw = c.width / n
+    hf, tf = c.font(DAYS_HEAD_PX, bold=True), c.font(DAYS_TIME_PX)
+    ef, kf = c.font(DAYS_EVENT_PX, bold=True), c.font(DAYS_TASK_PX, bold=True)
+    elh, klh, tlh = c.line_height(ef) * 0.92, c.line_height(kf) * 0.92, c.line_height(tf)
+    max_tasks = max(1, int(el.get("max_tasks") or 2))
+    top, bottom = c.y + 4, c.bottom - 4
+
+    def inner(i):
+        x = c.x0 + i * cw
+        left = x + (DAYS_PAD if i else 0)
+        right = x + cw - (DAYS_PAD if i < n - 1 else 0)
+        return left, right - left
+
+    # Tasks zone at the bottom, as tall as the fullest column needs.
+    task_plan, zone_h = [], 0
+    for i, col in enumerate(cols):
+        _, w = inner(i)
+        tasks = [_s(t) for t in (col.get("tasks") or []) if t]
+        more = bool(col.get("tasks_more")) or len(tasks) > max_tasks
+        blocks = [_clip_lines(c, t, kf, w, DAYS_TASK_LINES) for t in tasks[:max_tasks]]
+        h = sum(len(b) * klh + DAYS_ITEM_GAP for b in blocks) + (klh if more else 0)
+        task_plan.append((blocks, more))
+        zone_h = max(zone_h, h)
+    tasks_top = bottom - zone_h if zone_h else bottom
+
+    for i, col in enumerate(cols):
+        x = c.x0 + i * cw
+        left, w = inner(i)
+        if i:
+            c.draw.line([x, top, x, bottom], fill=BLACK, width=1)
+        c.draw.text((left, top), c.ellipsize(_s(col.get("title")), hf, w), font=hf, fill=BLACK)
+        y = top + c.line_height(hf) + 2
+        c.draw.rectangle([left, y, left + w, y + 2], fill=BLACK)
+        y += 14
+        limit = tasks_top - (16 if zone_h else 0)
+        events = [e for e in (col.get("events") or []) if isinstance(e, dict)]
+        for k, e in enumerate(events):
+            lines = _clip_lines(c, _s(e.get("text")), ef, w, 3)
+            need = (tlh if e.get("time") else 0) + len(lines) * elh
+            rest = len(events) - k
+            room_for_more = tlh if rest > 1 else 0
+            if y + need + room_for_more > limit:
+                c.draw.text((left, y), f"+{rest} more", font=tf, fill=BLACK)
+                break
+            if e.get("time"):
+                c.draw.text((left, y), _s(e["time"]), font=tf, fill=BLACK)
+                y += tlh
+            for ln in lines:
+                c.draw.text((left, y), ln, font=ef, fill=BLACK)
+                y += elh
+            y += DAYS_ITEM_GAP
+        blocks, more = task_plan[i]
+        if zone_h:
+            c.draw.line([left, tasks_top - 10, left + w, tasks_top - 10], fill=BLACK, width=1)
+            y = tasks_top
+            for b in blocks:
+                for ln in b:
+                    c.draw.text((left, y), ln, font=kf, fill=BLACK)
+                    y += klh
+                y += DAYS_ITEM_GAP
+            if more:
+                c.draw.text((left, y - DAYS_ITEM_GAP * 0.6), "…", font=c.font(30, bold=True), fill=BLACK)
+    c.y = bottom
+
+
+def days_html(page, el):
+    cols = [col for col in (el.get("columns") or []) if isinstance(col, dict)]
+    if not cols:
+        return ""
+    max_tasks = max(1, int(el.get("max_tasks") or 2))
+    out = []
+    for col in cols:
+        ev = "".join(f'<li>{"<small>" + escape(_s(e.get("time"))) + "</small><br>" if e.get("time") else ""}'
+                     f'<b>{escape(_s(e.get("text")))}</b></li>'
+                     for e in (col.get("events") or []) if isinstance(e, dict))
+        tasks = [t for t in (col.get("tasks") or []) if t]
+        tk = "".join(f"<li>{escape(_s(t))}</li>" for t in tasks[:max_tasks])
+        if col.get("tasks_more") or len(tasks) > max_tasks:
+            tk += "<li>…</li>"
+        out.append(f'<div class="d"><h3>{escape(_s(col.get("title")))}</h3><ul class="ev">{ev}</ul>'
+                   + (f'<ul class="tk">{tk}</ul>' if tk else "") + "</div>")
+    return f'<div class="el el-days">{"".join(out)}</div>'
+
+
 # ----- hourly --------------------------------------------------------------
 HOURLY_VALUE_PX = 22
 HOURLY_LABEL_PX = 20
-HOURLY_LINE_H = 44       # vertical travel of the value line
-HOURLY_BAR_H = 40        # height of a full bar
+HOURLY_LINE_H = 36       # vertical travel of the value line
+HOURLY_BAR_H = 32        # height of a full bar
 HOURLY_BAR_GRAY = 140
 
 
@@ -669,7 +783,7 @@ def hourly_png(c, el):
             tx = min(max(x - tw / 2, c.x0), c.x1 - tw)
             c.draw.text((tx, y - 10), t, font=vf, fill=BLACK, anchor="ls")
 
-    base = line_top + HOURLY_LINE_H + 16 + HOURLY_BAR_H
+    base = line_top + HOURLY_LINE_H + 8 + HOURLY_BAR_H
     bar_max = _num_or_none(el.get("bar_max")) or 100
     threshold = _num_or_none(el.get("bar_threshold"))
     for x, q in zip(xs, pts):
@@ -734,3 +848,4 @@ register("spacer", png=spacer_png, html=spacer_html)
 register("stats", png=stats_png, html=stats_html)
 register("hero", png=hero_png, html=hero_html)
 register("hourly", png=hourly_png, html=hourly_html)
+register("days", png=days_png, html=days_html)

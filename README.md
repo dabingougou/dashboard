@@ -25,7 +25,8 @@ src/dashlib/
   registry.py             finds and validates dashboards/*/dashboard.yaml
   runner.py               fetch -> layout -> render, stale fallback, safety checks
   elements/__init__.py    element type registry (type name -> PNG + HTML drawer)
-  elements/builtin.py     built in types: title, banner, text, kv, list, table, divider, spacer, stats
+  elements/builtin.py     built in types: title, banner, text, kv, list, table, divider, spacer, stats,
+                          hero, hourly, days
   sections.py             helpers for dashboards made of independent sections
   render_png.py           Pillow renderer (Canvas used by PNG drawers)
   render_html.py          HTML page template
@@ -166,8 +167,8 @@ don't change. An unknown type draws a small placeholder instead of crashing.
 
 A private screen for the Kindle (refreshes every 15 minutes, `kindle_publish:
 true`). It shows a compact date line (with tags for what changes tomorrow at
-its right), then its sections (for now only `weather`), then empty space for
-future sections, then the footer.
+its right, under a small "Tomorrow" label), then its sections in config order
+(`weather`, then `agenda`), then the footer.
 
 Weather comes from the [Open-Meteo](https://open-meteo.com/) forecast API (free,
 no key; credit shown in the footer unless `source_notes: false` is set for a
@@ -180,8 +181,13 @@ The weather row (a `hero` element) shows:
   with the hour of the peak (`40%`, "by 3 pm"), only when it is at or above
   `rain_threshold_percent`;
 - on the right, the wind now with the 3 hour forecast in parentheses and the
-  unit (`9 (5) km/h`), and below it the temperatures 3 and 6 hours later
-  (`(8°/6°)`).
+  unit (`9 (5) km/h`), and below it "feels like" and the next sunrise or
+  sunset (`feels 5°  [sunset] 5:27 pm`).
+
+Under it, an `hourly` strip covers the current hour and the next 12: a
+temperature line (values written at the first and last hour, the lowest and
+highest, and every 4th hour) and rain chance bars, solid black at or above the
+rain threshold and gray below it.
 
 With `tomorrow_tags: true`, short tags beside the date say what changes
 tomorrow compared with today: `warmer`/`cooler` (high temperature, 3° or more),
@@ -196,6 +202,26 @@ Settings live under `dashboards.today.weather` in `config.yaml` (see
 config.yaml". Set `simulate: true` to draw clearly labeled SAMPLE weather
 with no network. `simulate_rain_percent` sets the simulated peak rain chance, so
 setting it below the threshold previews the dry look.
+
+### Agenda (calendar and to-dos)
+
+The `agenda` section draws the next few days (`days`, default 3) side by side
+with a `days` element: each column has the day's calendar events (time, then
+the title in bold; "All day" for all day events) and, at the bottom, its
+to-do tasks (at most `max_tasks`, default 2, then "…"). Events that already
+ended drop off today's column, overdue tasks go into today, and empty days
+stay blank.
+
+- **Calendars:** `calendars` is a list of private iCal (`.ics`) addresses, for
+  example Google Calendar's "Secret address in iCal format". Repeating events
+  are expanded (needs `icalendar` and `recurring-ical-events`, in
+  `requirements.txt`).
+- **Tasks:** `todoist_token` is a Todoist API token; `todoist_filter` picks the
+  tasks (default `overdue | next 7 days`).
+
+Both are secrets: put them only in `config.yaml`. With neither set the screen
+says "Agenda: add calendars or todoist_token in config.yaml". `simulate: true`
+draws a labeled SAMPLE week with no network.
 
 ## Kindle delivery
 

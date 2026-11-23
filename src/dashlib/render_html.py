@@ -36,6 +36,12 @@ h1.el-title .tags.row li.label { display: block; font-weight: 400; font-size: .8
 .el-hero .v { font-size: 6em; font-weight: 700; line-height: 1; }
 .el-hero .side .r { font-size: 1.6em; line-height: 1.3; } .el-hero .s, .el-hero .u { font-size: .65em; }
 .el-hero .p { font-size: .6em; }
+.el-days { display: flex; gap: 0; }
+.el-days .d { flex: 1 1 0; min-width: 0; padding: 0 12px; }
+.el-days .d + .d { border-left: 1px solid var(--rule); }
+.el-days h3 { margin: 0 0 8px; border-bottom: 2px solid var(--rule); }
+.el-days ul { list-style: none; padding: 0; margin: 0 0 12px; } .el-days li { margin: 0 0 10px; }
+.el-days .tk { border-top: 1px solid var(--rule); padding-top: 8px; font-weight: 700; }
 .el-hourly svg { width: 100%; height: auto; display: block; }
 .el-subtitle { color: var(--muted); margin: 4px 0 0; }
 .el-banner { background: var(--fg); color: var(--bg); font-weight: 700; text-align: center;

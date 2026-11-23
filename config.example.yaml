@@ -15,7 +15,7 @@ dashboards:
 
   today:
     # Sections shown on the "today" screen, top to bottom.
-    sections: [weather]
+    sections: [weather, agenda]
     # false -> no data source credits in the footer. Fine for a private screen;
     # keep true for anything shared or public (Open-Meteo requires credit).
     source_notes: true
@@ -29,6 +29,13 @@ dashboards:
       simulate_rain_percent: 40   # with simulate: peak rain chance (below the threshold -> dry look)
       tomorrow_tags: false        # true -> tags beside the date for what changes tomorrow
       # simulate_tomorrow: {temp: -4, wind: 15, rain: 60}   # with simulate: tomorrow minus today
+    agenda:
+      days: 3                     # day columns, today first
+      calendars: []               # private .ics addresses (SECRET: keep real ones only in config.yaml)
+      todoist_token: ""           # Todoist API token (SECRET)
+      todoist_filter: ""          # blank -> "overdue | next 7 days"
+      max_tasks: 2                # tasks per day before "…"
+      simulate: false             # true -> made up SAMPLE events and tasks, no network
 
   # example_private_dashboard:
   #   api_token: ""
