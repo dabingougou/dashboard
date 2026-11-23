@@ -43,11 +43,12 @@ Element dicts (all text is plain strings; format times in the layout step):
       below), and the point labels along the bottom.
   {"type": "days",    "columns": [{"title": str, "events": [{"time": str, "text": str}, ...],
                                    "tasks": [str, ...], "tasks_more": bool?}, ...],
-                      "max_tasks": int?}
+                      "max_tasks": int?, "event_lines": int?, "task_lines": int?}
       Side by side day columns that fill the rest of the screen: a bold
       underlined heading, the events (time, then the bold title, wrapped), and
-      at the bottom of every column the tasks (at most max_tasks, default 2,
-      up to two lines each) with "…" when there are more. Events that do not
+      at the bottom of every column the tasks (at most max_tasks, default 2)
+      with "…" when there are more. Titles take at most event_lines and
+      task_lines lines (default 1 each) and end with "…" when cut. Events that do not
       fit end with "+N more". An empty column stays blank.
       A side row is one item, or several side by side when it has "parts"
       (each part takes the same keys as a row; size and bold come from the row).
@@ -600,12 +601,11 @@ def hero_html(page, el):
 
 # ----- days ----------------------------------------------------------------
 DAYS_HEAD_PX = 28
-DAYS_TIME_PX = 24
-DAYS_EVENT_PX = 28
-DAYS_TASK_PX = 23
+DAYS_TIME_PX = 19
+DAYS_EVENT_PX = 22
+DAYS_TASK_PX = 20
 DAYS_PAD = 14            # space between a column rule and its text
 DAYS_ITEM_GAP = 14
-DAYS_TASK_LINES = 2
 
 
 def _clip_lines(c, text, font, width, max_lines):
@@ -625,6 +625,8 @@ def days_png(c, el):
     ef, kf = c.font(DAYS_EVENT_PX, bold=True), c.font(DAYS_TASK_PX, bold=True)
     elh, klh, tlh = c.line_height(ef) * 0.92, c.line_height(kf) * 0.92, c.line_height(tf)
     max_tasks = max(1, int(el.get("max_tasks") or 2))
+    event_lines = max(1, int(el.get("event_lines") or 1))
+    task_lines = max(1, int(el.get("task_lines") or 1))
     top, bottom = c.y + 4, c.bottom - 4
 
     def inner(i):
@@ -639,7 +641,7 @@ def days_png(c, el):
         _, w = inner(i)
         tasks = [_s(t) for t in (col.get("tasks") or []) if t]
         more = bool(col.get("tasks_more")) or len(tasks) > max_tasks
-        blocks = [_clip_lines(c, t, kf, w, DAYS_TASK_LINES) for t in tasks[:max_tasks]]
+        blocks = [_clip_lines(c, t, kf, w, task_lines) for t in tasks[:max_tasks]]
         h = sum(len(b) * klh + DAYS_ITEM_GAP for b in blocks) + (klh if more else 0)
         task_plan.append((blocks, more))
         zone_h = max(zone_h, h)
@@ -657,7 +659,7 @@ def days_png(c, el):
         limit = tasks_top - (16 if zone_h else 0)
         events = [e for e in (col.get("events") or []) if isinstance(e, dict)]
         for k, e in enumerate(events):
-            lines = _clip_lines(c, _s(e.get("text")), ef, w, 3)
+            lines = _clip_lines(c, _s(e.get("text")), ef, w, event_lines)
             need = (tlh if e.get("time") else 0) + len(lines) * elh
             rest = len(events) - k
             room_for_more = tlh if rest > 1 else 0

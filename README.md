@@ -208,7 +208,8 @@ setting it below the threshold previews the dry look.
 The `agenda` section draws the next few days (`days`, default 3) side by side
 with a `days` element: each column has the day's calendar events (time, then
 the title in bold; "All day" for all day events) and, at the bottom, its
-to-do tasks (at most `max_tasks`, default 2, then "…"). Events that already
+to-do tasks (at most `max_tasks`, default 2, then "…"). Every title takes one
+line and ends with "…" when it is too long. Events that already
 ended drop off today's column, overdue tasks go into today, and empty days
 stay blank.
 
