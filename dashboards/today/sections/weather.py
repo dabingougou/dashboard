@@ -1,4 +1,5 @@
-"""Weather section: current conditions, +3h and +6h forecasts, from Open-Meteo.
+"""Weather section: current conditions, an hourly strip for the next 12 hours,
+"feels like" and the next sunrise or sunset, from Open-Meteo.
 
 Config (dashboards.today.weather in config.yaml):
     latitude, longitude      blank -> a "Set location in config.yaml" note
@@ -26,14 +27,17 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from dashlib.timeutil import to_datetime
+
 FOOTER_NOTE = "Weather: Open-Meteo.com"
 
 API_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEOUT_SECONDS = 15
 HOURS_AHEAD = 3          # rain window: the current hour and the next 3
-LATER_HOURS = (3, 6)     # forecast temperatures shown in parentheses
 WIND_LATER_HOURS = 3     # forecast wind shown in parentheses
-FETCH_HOURS = 7          # hourly values requested: now .. +6h
+STRIP_HOURS = 12         # hourly strip: the current hour .. +12h
+STRIP_MARK_EVERY = 4     # write the temperature at every 4th hour
+FETCH_HOURS = STRIP_HOURS + 1
 
 # Tomorrow versus today, compared on daily values (high temperature, strongest
 # wind, highest rain chance). A tag shows only when the change reaches these.
@@ -129,15 +133,23 @@ def _simulated(config: dict, s: dict) -> dict:
     hour = datetime.now(tz).replace(minute=0, second=0, microsecond=0)
     # Peak at +2h; the other hours are lower, so the peak hour is unambiguous.
     peak = s["sim_rain"]
-    probs = [round(peak * k) for k in (0.25, 0.6, 1.0, 0.75, 0.5, 0.3, 0.2)]
+    shape = (0.25, 0.6, 1.0, 0.75, 0.5, 0.3, 0.2, 0.15, 0.1, 0.1, 0.05, 0.05, 0.05)
+    probs = [round(peak * k) for k in shape[:FETCH_HOURS]]
+    temps = [round(7.0 - 0.6 * i + (0.08 * i * i if i > 6 else 0), 1) for i in range(FETCH_HOURS)]
+    day = hour.replace(hour=0)
+    daily = _simulated_daily(peak, s["sim_tomorrow"])
+    daily["sunrise"] = [(day + timedelta(days=d, hours=7, minutes=31)).isoformat() for d in (0, 1)]
+    daily["sunset"] = [(day + timedelta(days=d, hours=16, minutes=27)).isoformat() for d in (0, 1)]
     return {
         "time": [(hour + timedelta(hours=i)).isoformat() for i in range(FETCH_HOURS)],
-        "current": {"temperature_2m": 7.2, "wind_speed_10m": 18.4, "weather_code": 2},
-        "hourly": {"temperature_2m": [7.0, 6.4, 5.8, 5.1, 4.4, 3.8, 3.2],
-                   "wind_speed_10m": [18, 19, 21, 24, 22, 20, 17],
+        "current": {"temperature_2m": 7.2, "apparent_temperature": 4.1, "wind_speed_10m": 18.4,
+                    "weather_code": 2},
+        "hourly": {"temperature_2m": temps,
+                   "wind_speed_10m": [18, 19, 21, 24, 22, 20, 17, 15, 14, 12, 12, 11, 10][:FETCH_HOURS],
                    "precipitation_probability": probs,
-                   "weather_code": [2, 3, 61, 61, 3, 3, 2]},
-        "daily": _simulated_daily(peak, s["sim_tomorrow"]),
+                   "weather_code": [2, 3, 61, 61, 3, 3, 2, 2, 2, 1, 1, 1, 1][:FETCH_HOURS]},
+        "daily": daily,
+        "sun": _sun_events(daily, None),
     }
 
 
@@ -155,10 +167,10 @@ def _request(lat: float, lon: float, config: dict, s: dict) -> dict:
     params = {
         "latitude": f"{lat:.4f}",
         "longitude": f"{lon:.4f}",
-        "current": "temperature_2m,wind_speed_10m,weather_code",
+        "current": "temperature_2m,apparent_temperature,wind_speed_10m,weather_code",
         "hourly": "temperature_2m,wind_speed_10m,precipitation_probability,weather_code",
         "forecast_hours": FETCH_HOURS,
-        "daily": "temperature_2m_max,wind_speed_10m_max,precipitation_probability_max",
+        "daily": "temperature_2m_max,wind_speed_10m_max,precipitation_probability_max,sunrise,sunset",
         "forecast_days": 2,
         "timezone": config.get("timezone") or "UTC",
         "temperature_unit": s["temp_unit"],
@@ -180,8 +192,25 @@ def _request(lat: float, lon: float, config: dict, s: dict) -> dict:
             times.append(datetime.fromisoformat(t).replace(tzinfo=offset).isoformat())
         except (TypeError, ValueError):
             times.append(None)
+    daily = raw.get("daily") or {}
     return {"time": times, "current": raw.get("current") or {}, "hourly": raw.get("hourly") or {},
-            "daily": raw.get("daily") or {}}
+            "daily": daily, "sun": _sun_events(daily, offset)}
+
+
+def _sun_events(daily: dict, offset) -> list[list[str]]:
+    """[["sunrise" | "sunset", iso time], ...] in time order. Times without an
+    offset get `offset` (None: they already carry one)."""
+    out = []
+    for kind in ("sunrise", "sunset"):
+        for t in daily.get(kind) or []:
+            try:
+                dt = datetime.fromisoformat(t)
+            except (TypeError, ValueError):
+                continue
+            if dt.tzinfo is None and offset is not None:
+                dt = dt.replace(tzinfo=offset)
+            out.append([kind, dt.isoformat()])
+    return sorted(out, key=lambda e: e[1])
 
 
 def fetch(config: dict) -> dict:
@@ -224,7 +253,10 @@ def fetch(config: dict) -> dict:
         "status": "ok",
         "sample": simulate,
         "temp_now": temp_now,
-        "temp_later": [_num(_at(temps, h)) for h in LATER_HOURS],
+        "feels_now": _num(cur.get("apparent_temperature")),
+        "hourly": [{"time": _at(times, i), "temp": _num(_at(temps, i)), "rain": _num(_at(probs, i))}
+                   for i in range(min(FETCH_HOURS, len(times)))],
+        "sun": raw.get("sun") or [],
         "wind_later": _num(_at(winds, WIND_LATER_HOURS)),
         "code_now": None if code_now is None else int(code_now),
         "wind_now": _num(cur.get("wind_speed_10m")),
@@ -288,19 +320,40 @@ def header_tags(data: dict, ctx) -> list[str]:
     return tags  # nothing changes -> no tags at all
 
 
-def _later_temps(values) -> str | None:
-    """'8°/6°' for the forecast temperatures, skipping missing ones."""
-    if not isinstance(values, list):  # older saved data held one number
-        values = [values]
-    shown = [_deg(v) for v in values if isinstance(v, (int, float))]
-    return "/".join(shown) or None
+def _next_sun(data: dict, ctx) -> dict | None:
+    """Side row part for the next sunrise or sunset after now."""
+    for kind, when in data.get("sun") or []:
+        try:
+            if to_datetime(when) > ctx.now:
+                clock, ampm = ctx.format_time(when, "clock").split(" ")
+                return {"icon": kind, "value": clock, "unit": ampm}
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _strip(data: dict, ctx) -> dict | None:
+    """Hourly element: temperature line and rain chance bars."""
+    points = []
+    for i, h in enumerate(data.get("hourly") or []):
+        if not h.get("time"):
+            continue
+        dt = to_datetime(h["time"]).astimezone(ctx.tz)
+        label = ctx.format_time(dt, "hour_short")
+        if i == 0 or dt.hour in (0, 12):
+            label += "a" if dt.hour < 12 else "p"
+        points.append({"label": label, "value": h.get("temp"), "bar": h.get("rain")})
+    if len(points) < 2:
+        return None
+    return {"type": "hourly", "points": points, "value_suffix": "°", "mark_every": STRIP_MARK_EVERY,
+            "bar_threshold": data.get("rain_threshold", 20)}
 
 
 def layout(data: dict, ctx) -> list[dict]:
     if data.get("status") == "needs_location":
         return [{"type": "text", "text": "Weather: set location in config.yaml", "size": "small"}]
 
-    temp_now, temp_later = data.get("temp_now"), data.get("temp_later")
+    temp_now = data.get("temp_now")
     code = data.get("code_now")
     wind, wind_later = data.get("wind_now"), data.get("wind_later")
 
@@ -318,17 +371,26 @@ def layout(data: dict, ctx) -> list[dict]:
         side.append({"icon": "wind", "value": str(_round(wind)),
                      "secondary": str(_round(wind_later)) if wind_later is not None else None,
                      "unit": data.get("wind_unit", "")})
-    later = _later_temps(temp_later)
-    if later:
-        side.append({"value": f"({later})", "size": 46, "bold": False})
+    parts = []
+    if data.get("feels_now") is not None:
+        parts.append({"prefix": "feels", "value": _deg(data["feels_now"])})
+    sun = _next_sun(data, ctx)
+    if sun:
+        parts.append(sun)
+    if parts:
+        side.append({"parts": parts, "size": 40})
 
     out = []
     if data.get("sample"):
         out.append({"type": "text", "text": "SAMPLE weather (simulate: true), not real",
                     "size": "small", "bold": True})
     # Big current temperature; condition icon with the rain chance under it
-    # (only when rain reaches the threshold); wind and later temperatures on the right.
+    # (only when rain reaches the threshold); on the right, wind, then
+    # "feels like" and the next sunrise or sunset. Then the hourly strip.
     out.append({"type": "hero", "value": _deg(temp_now) if temp_now is not None else "--",
                 "icon": condition_icon(code), "icon_alt": condition(code),
                 "note": note, "side": side})
+    strip = _strip(data, ctx)
+    if strip:
+        out += [{"type": "divider"}, strip]
     return out

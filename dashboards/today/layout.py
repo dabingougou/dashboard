@@ -15,8 +15,9 @@ SECTIONS = Path(__file__).resolve().parent / "sections"
 
 def layout(data, ctx):
     elements, notes = layout_sections(SECTIONS, data, ctx)
+    tags = header_tags_sections(SECTIONS, data, ctx)
     date = {"type": "title", "text": ctx.format_time(ctx.now, "date"), "size": 46,
-            "tags": header_tags_sections(SECTIONS, data, ctx), "tags_layout": "row"}
+            "tags": tags, "tags_layout": "row", "tags_label": "Tomorrow" if tags else ""}
     if ctx.settings.get("source_notes", True) is False:
         notes = []
     return {"elements": [date, *elements], "footer_note": " · ".join(notes)}

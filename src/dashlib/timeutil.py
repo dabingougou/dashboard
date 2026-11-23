@@ -26,6 +26,8 @@ def format_time(value: datetime | str, tz: tzinfo, style: str = "datetime") -> s
            "date"     -> "Fri Nov 20"
            "time"     -> "21:05"
            "hour"     -> "3 pm"
+           "clock"    -> "9:05 pm"
+           "hour_short" -> "9" ("9a"/"9p" at midnight and noon is "12a"/"12p")
     """
     dt = to_datetime(value).astimezone(tz)
     date = f"{dt:%a %b} {dt.day}"
@@ -33,6 +35,10 @@ def format_time(value: datetime | str, tz: tzinfo, style: str = "datetime") -> s
         return date
     if style == "time":
         return f"{dt:%H:%M}"
+    if style == "clock":
+        return f"{dt.hour % 12 or 12}:{dt:%M} {'am' if dt.hour < 12 else 'pm'}"
+    if style == "hour_short":
+        return f"{dt.hour % 12 or 12}"
     if style == "hour":
         return f"{dt.hour % 12 or 12} {'am' if dt.hour < 12 else 'pm'}"
     return f"{dt:%b} {dt.day}, {dt.hour % 12 or 12}:{dt:%M} {'am' if dt.hour < 12 else 'pm'}"

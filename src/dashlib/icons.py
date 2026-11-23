@@ -9,7 +9,7 @@ outputs:
 
 Register more icons with  register(name, draw_fn, aspect).
 Built in names: sun, partly_cloudy, cloud, fog, drizzle, rain, snow, thunder,
-wind, drop.
+wind, drop, sunrise, sunset.
 """
 
 from __future__ import annotations
@@ -282,6 +282,27 @@ def drop(p, a):
     p.disc(cx, cc, r)
 
 
+def _horizon_sun(p, a, down):
+    """Half sun on a horizon line, with a small arrow under it (down = sunset)."""
+    cx, hy, r = a / 2, 0.66, 0.2
+    p.arc(cx, hy, r, 180, 360)
+    for deg in (-150, -120, -90, -60, -30):
+        t = math.radians(deg)
+        p.line([(cx + math.cos(t) * 0.31, hy + math.sin(t) * 0.31),
+                (cx + math.cos(t) * 0.45, hy + math.sin(t) * 0.45)])
+    p.line([(0.04, hy), (a - 0.04, hy)])
+    tip, base = (1.0, 0.8) if down else (0.78, 0.98)
+    p.polygon([(cx - 0.13, base), (cx + 0.13, base), (cx, tip)])
+
+
+def sunrise(p, a):
+    _horizon_sun(p, a, down=False)
+
+
+def sunset(p, a):
+    _horizon_sun(p, a, down=True)
+
+
 register("sun", sun, 1.0)
 register("cloud", cloud, 1.4)
 register("partly_cloudy", partly_cloudy, 1.3)
@@ -292,3 +313,5 @@ register("snow", snow, 1.3)
 register("thunder", thunder, 1.3)
 register("wind", wind, 1.6)
 register("drop", drop, 0.6)
+register("sunrise", sunrise, 1.2)
+register("sunset", sunset, 1.2)

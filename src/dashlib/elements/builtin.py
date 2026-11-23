@@ -4,10 +4,11 @@ Each type has a PNG drawer (canvas, el) and an HTML drawer (page, el).
 Element dicts (all text is plain strings; format times in the layout step):
 
   {"type": "title",   "text": str, "subtitle": str?, "size": int|name?, "tags": [str]?,
-                      "tags_layout": "stack"|"row"?}
+                      "tags_layout": "stack"|"row"?, "tags_label": str?}
       tags: short bold words at the right end of the title line, stacked
       (bottom aligned, default) or in one row on the title's baseline. The
-      title shrinks if it would come too close to them.
+      title shrinks if it would come too close to them. tags_label: a small
+      word above a row of tags (e.g. "Tomorrow").
   {"type": "banner",  "text": str}                       inverted full width label
   {"type": "text",    "text": str, "size": "small|medium|large"?, "bold": bool?}
   {"type": "kv",      "items": [[label, value], ...]}    label left, big value right
@@ -29,9 +30,19 @@ Element dicts (all text is plain strings; format times in the layout step):
   {"type": "hero",    "value": str, "size": int?, "icon": str?, "icon_alt": str?,
                       "note": {"icon": str?, "value": str, "caption": str?}?,
                       "side": [{"icon": str?, "value": str, "secondary": str?,
-                                "unit": str?, "size": int?, "bold": bool?}, ...]}
+                                "unit": str?, "prefix": str?, "size": int?, "bold": bool?,
+                                "parts": [{"prefix"?, "icon"?, "value", "secondary"?, "unit"?}, ...]?}, ...]}
       One very large value (default 170 px) with an icon on its left, an
       optional small note under the icon, and a stack of rows on its right.
+  {"type": "hourly",  "points": [{"label": str, "value": number?, "bar": number?}, ...],
+                      "value_suffix": str?, "mark_every": int?, "bar_max": number?,
+                      "bar_threshold": number?}
+      A strip over time: a line through the values (with the value written at
+      every mark_every-th point, default 4, and the last one), bars under it
+      (0..bar_max, default 100; solid black at or above bar_threshold, gray
+      below), and the point labels along the bottom.
+      A side row is one item, or several side by side when it has "parts"
+      (each part takes the same keys as a row; size and bold come from the row).
       Everything shrinks together if it would not fit the width.
 """
 
@@ -58,9 +69,10 @@ TITLE_MIN_SCALE = 0.7
 
 
 TITLE_TAG_ROW_GAP = 18
+TITLE_TAG_LABEL_PX = 20
 
 
-def _title_with_tags(c, text, size, tags, row=False):
+def _title_with_tags(c, text, size, tags, row=False, label=""):
     tf = c.font(TITLE_TAG_PX, bold=True)
     if row:
         tag_w = sum(c.text_width(t, tf) for t in tags) + TITLE_TAG_ROW_GAP * (len(tags) - 1)
@@ -84,6 +96,10 @@ def _title_with_tags(c, text, size, tags, row=False):
             x -= c.text_width(t, tf)
             c.draw.text((x, baseline), t, font=tf, fill=BLACK, anchor="ls")
             x -= TITLE_TAG_ROW_GAP
+        if label:
+            lf = c.font(TITLE_TAG_LABEL_PX)
+            ty = baseline - tf.getmetrics()[0] - 4
+            c.draw.text((c.x1 - c.text_width(label, lf), ty), label, font=lf, fill=BLACK, anchor="ls")
         c.y = top + lh0
         return
     tlh = c.line_height(tf)
@@ -98,7 +114,7 @@ def title_png(c, el):
     tags = [_s(t) for t in (el.get("tags") or []) if t]
     if tags:
         _title_with_tags(c, _s(el.get("text")), el.get("size", "title"), tags,
-                         row=el.get("tags_layout") == "row")
+                         row=el.get("tags_layout") == "row", label=_s(el.get("tags_label")))
     else:
         c.text_block(_s(el.get("text")), size=el.get("size", "title"), bold=True)
     if el.get("subtitle"):
@@ -112,7 +128,9 @@ def title_html(page, el):
     tags = [_s(t) for t in (el.get("tags") or []) if t]
     tag_html = ""
     if tags:
-        tag_html = f'<ul class="tags {"row" if el.get("tags_layout") == "row" else ""}">' + "".join(f"<li>{escape(t)}</li>" for t in tags) + "</ul>"
+        label = f'<li class="label">{escape(_s(el["tags_label"]))}</li>' if el.get("tags_label") else ""
+        tag_html = (f'<ul class="tags {"row" if el.get("tags_layout") == "row" else ""}">' + label
+                    + "".join(f"<li>{escape(t)}</li>" for t in tags) + "</ul>")
     out = f'<h1 class="el-title">{tag_html}{escape(_s(el.get("text")))}</h1>'
     if el.get("subtitle"):
         out += f'<p class="el-subtitle">{escape(_s(el["subtitle"]))}</p>'
@@ -392,6 +410,7 @@ def stats_html(page, el):
 # ----- hero ----------------------------------------------------------------
 HERO_DEFAULT_PX = 170
 HERO_MIN_SCALE = 0.5
+HERO_PART_GAP = 30       # px between parts of one side row
 
 
 def _paste_icon(c, name, height, x, y):
@@ -438,23 +457,36 @@ def _hero_plan(c, el, k):
     p["col_w"], p["col_h"] = col_w, col_h
     p["gap1"] = round(18 * k) if col_w else 0
 
-    # Side rows.
+    # Side rows; each row is one or more parts drawn side by side.
     rows = []
     for r in el.get("side") or []:
-        if not isinstance(r, dict) or not r.get("value"):
+        if not isinstance(r, dict):
+            continue
+        parts = r.get("parts") if isinstance(r.get("parts"), list) else [r]
+        parts = [q for q in parts if isinstance(q, dict) and q.get("value")]
+        if not parts:
             continue
         rpx = r.get("size") or 52
         f = c.font(round(rpx * k), bold=r.get("bold", True))
         sf = c.font(round(rpx * 0.65 * k))
         uf = c.font(max(18, round(rpx * 0.46 * k)))
+        pf = c.font(max(18, round(rpx * 0.6 * k)))
         ih = round(rpx * 0.77 * k)
-        iw = _icon_w(r.get("icon"), ih)
-        w = (iw + round(10 * k) if iw else 0) + c.text_width(_s(r["value"]), f)
-        if r.get("secondary"):
-            w += round(6 * k) + c.text_width(f"({_s(r['secondary'])})", sf)
-        if r.get("unit"):
-            w += round(8 * k) + c.text_width(_s(r["unit"]), uf)
-        rows.append({"r": r, "f": f, "sf": sf, "uf": uf, "ih": ih, "iw": iw, "w": w,
+        w = 0
+        for q in parts:
+            q_w = c.text_width(_s(q["value"]), f)
+            if q.get("prefix"):
+                q_w += c.text_width(_s(q["prefix"]), pf) + round(8 * k)
+            iw = _icon_w(q.get("icon"), ih)
+            if iw:
+                q_w += iw + round(10 * k)
+            if q.get("secondary"):
+                q_w += round(6 * k) + c.text_width(f"({_s(q['secondary'])})", sf)
+            if q.get("unit"):
+                q_w += round(8 * k) + c.text_width(_s(q["unit"]), uf)
+            w += q_w
+        w += HERO_PART_GAP * k * (len(parts) - 1)
+        rows.append({"parts": parts, "f": f, "sf": sf, "uf": uf, "pf": pf, "ih": ih, "w": w,
                      "h": round(rpx * 1.2 * k)})
     p["rows"] = rows
     p["side_w"] = max((r["w"] for r in rows), default=0)
@@ -500,23 +532,31 @@ def hero_png(c, el):
     # Side rows, stacked and centred on the row.
     y = cy - p["side_h"] / 2
     for row in p["rows"]:
-        r, yc = row["r"], y + row["h"] / 2
-        rx = x
-        if row["iw"]:
-            _paste_icon(c, r["icon"], row["ih"], rx, yc - row["ih"] / 2)
-            rx += row["iw"] + round(10 * k)
+        yc = y + row["h"] / 2
         cap = -row["f"].getbbox("0", anchor="ls")[1]
         base = yc + cap / 2
-        c.draw.text((rx, base), _s(r["value"]), font=row["f"], fill=BLACK, anchor="ls")
-        rx += c.text_width(_s(r["value"]), row["f"])
-        if r.get("secondary"):
-            rx += round(6 * k)
-            sec = f"({_s(r['secondary'])})"
-            c.draw.text((rx, base), sec, font=row["sf"], fill=BLACK, anchor="ls")
-            rx += c.text_width(sec, row["sf"])
-        if r.get("unit"):
-            rx += round(8 * k)
-            c.draw.text((rx, base), _s(r["unit"]), font=row["uf"], fill=BLACK, anchor="ls")
+        rx = x
+        for i, q in enumerate(row["parts"]):
+            if i:
+                rx += HERO_PART_GAP * k
+            if q.get("prefix"):
+                c.draw.text((rx, base), _s(q["prefix"]), font=row["pf"], fill=BLACK, anchor="ls")
+                rx += c.text_width(_s(q["prefix"]), row["pf"]) + round(8 * k)
+            iw = _icon_w(q.get("icon"), row["ih"])
+            if iw:
+                _paste_icon(c, q["icon"], row["ih"], rx, yc - row["ih"] / 2)
+                rx += iw + round(10 * k)
+            c.draw.text((rx, base), _s(q["value"]), font=row["f"], fill=BLACK, anchor="ls")
+            rx += c.text_width(_s(q["value"]), row["f"])
+            if q.get("secondary"):
+                rx += round(6 * k)
+                sec = f"({_s(q['secondary'])})"
+                c.draw.text((rx, base), sec, font=row["sf"], fill=BLACK, anchor="ls")
+                rx += c.text_width(sec, row["sf"])
+            if q.get("unit"):
+                rx += round(8 * k)
+                c.draw.text((rx, base), _s(q["unit"]), font=row["uf"], fill=BLACK, anchor="ls")
+                rx += c.text_width(_s(q["unit"]), row["uf"])
         y += row["h"]
     c.y = round(top + height)
 
@@ -531,16 +571,156 @@ def hero_html(page, el):
                 + "</div>")
     rows = ""
     for r in el.get("side") or []:
-        if not isinstance(r, dict) or not r.get("value"):
+        if not isinstance(r, dict):
             continue
-        v = escape(_s(r["value"]))
-        rows += (f'<div class="r">{icons.svg(r.get("icon"), 30)}'
-                 + (f"<b>{v}</b>" if r.get("bold", True) else v)
-                 + (f' <span class="s">({escape(_s(r["secondary"]))})</span>' if r.get("secondary") else "")
-                 + (f' <span class="u">{escape(_s(r["unit"]))}</span>' if r.get("unit") else "")
-                 + "</div>")
+        parts = r.get("parts") if isinstance(r.get("parts"), list) else [r]
+        html = []
+        for q in parts:
+            if not isinstance(q, dict) or not q.get("value"):
+                continue
+            v = escape(_s(q["value"]))
+            html.append((f'<span class="p">{escape(_s(q["prefix"]))}</span> ' if q.get("prefix") else "")
+                        + icons.svg(q.get("icon"), 30)
+                        + (f"<b>{v}</b>" if r.get("bold", True) else v)
+                        + (f' <span class="s">({escape(_s(q["secondary"]))})</span>' if q.get("secondary") else "")
+                        + (f' <span class="u">{escape(_s(q["unit"]))}</span>' if q.get("unit") else ""))
+        if html:
+            rows += f'<div class="r">{"&emsp;".join(html)}</div>'
     return (f'<div class="el el-hero"><div class="col">{col}</div>'
             f'<div class="v">{escape(_s(el.get("value")))}</div><div class="side">{rows}</div></div>')
+
+
+# ----- hourly --------------------------------------------------------------
+HOURLY_VALUE_PX = 22
+HOURLY_LABEL_PX = 20
+HOURLY_LINE_H = 44       # vertical travel of the value line
+HOURLY_BAR_H = 40        # height of a full bar
+HOURLY_BAR_GRAY = 140
+
+
+def _hourly_points(el):
+    pts = [q for q in (el.get("points") or []) if isinstance(q, dict)]
+    return pts if len(pts) >= 2 else []
+
+
+def _num_or_none(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _hourly_marks(n, every, vals=()):
+    """Indices whose value is written: the first and last, the lowest and
+    highest, then every `every`-th point, skipping any next to one already taken."""
+    every = max(1, int(every or 4))
+    known = [(v, i) for i, v in enumerate(vals) if v is not None]
+    wanted = [0, n - 1]
+    if known:
+        wanted += [min(known)[1], max(known)[1]]
+    wanted += list(range(0, n, every))
+    marks: list[int] = []
+    for i in wanted:
+        if all(abs(i - m) > 1 for m in marks) or i in marks:
+            if i not in marks:
+                marks.append(i)
+    return set(marks)
+
+
+def _fmt_value(v, suffix):
+    return f"{int(v + 0.5) if v >= 0 else -int(-v + 0.5)}{suffix}"
+
+
+def hourly_png(c, el):
+    pts = _hourly_points(el)
+    if not pts:
+        return
+    n = len(pts)
+    vf, lf = c.font(HOURLY_VALUE_PX, bold=True), c.font(HOURLY_LABEL_PX)
+    bar_w = max(6, min(24, c.width / n * 0.45))
+    edge = max(bar_w / 2, c.text_width(_s(pts[0].get("label")), lf) / 2, 14)
+    x0, x1 = c.x0 + edge, c.x1 - edge
+    step = (x1 - x0) / (n - 1)
+    xs = [x0 + i * step for i in range(n)]
+    suffix = _s(el.get("value_suffix"))
+
+    top = c.y + 8
+    line_top = top + c.line_height(vf) + 4
+    vals = [_num_or_none(q.get("value")) for q in pts]
+    known = [v for v in vals if v is not None]
+    if known:
+        lo, hi = min(known), max(known)
+        span = (hi - lo) or 1
+        ys = [None if v is None else line_top + HOURLY_LINE_H - (v - lo) / span * HOURLY_LINE_H for v in vals]
+        seg = []
+        for x, y in zip(xs, ys):
+            if y is None:
+                if len(seg) > 1:
+                    c.draw.line(seg, fill=BLACK, width=4, joint="curve")
+                seg = []
+            else:
+                seg.append((x, y))
+        if len(seg) > 1:
+            c.draw.line(seg, fill=BLACK, width=4, joint="curve")
+        for i in _hourly_marks(n, el.get("mark_every"), vals):
+            if ys[i] is None:
+                continue
+            x, y = xs[i], ys[i]
+            c.draw.ellipse([x - 6, y - 6, x + 6, y + 6], fill=BLACK)
+            t = _fmt_value(vals[i], suffix)
+            tw = c.text_width(t, vf)
+            tx = min(max(x - tw / 2, c.x0), c.x1 - tw)
+            c.draw.text((tx, y - 10), t, font=vf, fill=BLACK, anchor="ls")
+
+    base = line_top + HOURLY_LINE_H + 16 + HOURLY_BAR_H
+    bar_max = _num_or_none(el.get("bar_max")) or 100
+    threshold = _num_or_none(el.get("bar_threshold"))
+    for x, q in zip(xs, pts):
+        b = _num_or_none(q.get("bar"))
+        if b is None or b <= 0:
+            continue
+        h = max(2, min(1, b / bar_max) * HOURLY_BAR_H)
+        solid = threshold is None or b >= threshold
+        c.draw.rectangle([x - bar_w / 2, base - h, x + bar_w / 2, base],
+                         fill=BLACK if solid else HOURLY_BAR_GRAY)
+    c.draw.line([c.x0, base, c.x1, base], fill=BLACK, width=1)
+    for x, q in zip(xs, pts):
+        t = _s(q.get("label"))
+        c.draw.text((x - c.text_width(t, lf) / 2, base + 6), t, font=lf, fill=BLACK)
+    c.y = round(base + 6 + c.line_height(lf))
+
+
+def hourly_html(page, el):
+    pts = _hourly_points(el)
+    if not pts:
+        return ""
+    n, W, H = len(pts), 700, 150
+    xs = [20 + i * (W - 40) / (n - 1) for i in range(n)]
+    vals = [_num_or_none(q.get("value")) for q in pts]
+    known = [v for v in vals if v is not None]
+    parts = []
+    if known:
+        lo, hi = min(known), max(known)
+        span = (hi - lo) or 1
+        ys = [None if v is None else 30 + 44 - (v - lo) / span * 44 for v in vals]
+        line = " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys) if y is not None)
+        parts.append(f'<polyline points="{line}" fill="none" stroke="var(--fg,#000)" stroke-width="3"/>')
+        for i in _hourly_marks(n, el.get("mark_every"), vals):
+            if ys[i] is not None:
+                parts.append(f'<circle cx="{xs[i]:.1f}" cy="{ys[i]:.1f}" r="4" fill="var(--fg,#000)"/>'
+                             f'<text x="{xs[i]:.1f}" y="{ys[i] - 9:.1f}" text-anchor="middle" font-size="16" '
+                             f'font-weight="700" fill="var(--fg,#000)">{escape(_fmt_value(vals[i], _s(el.get("value_suffix"))))}</text>')
+    bar_max = _num_or_none(el.get("bar_max")) or 100
+    threshold = _num_or_none(el.get("bar_threshold"))
+    for x, q in zip(xs, pts):
+        b = _num_or_none(q.get("bar"))
+        if b and b > 0:
+            h = max(2, min(1, b / bar_max) * 36)
+            op = "1" if threshold is None or b >= threshold else ".45"
+            parts.append(f'<rect x="{x - 8:.1f}" y="{122 - h:.1f}" width="16" height="{h:.1f}" '
+                         f'fill="var(--fg,#000)" opacity="{op}"/>')
+        parts.append(f'<text x="{x:.1f}" y="142" text-anchor="middle" font-size="14" '
+                     f'fill="var(--fg,#000)">{escape(_s(q.get("label")))}</text>')
+    parts.append('<line x1="0" y1="122" x2="700" y2="122" stroke="var(--fg,#000)" stroke-width="1"/>')
+    return (f'<div class="el el-hourly"><svg viewBox="0 0 {W} {H}" role="img" '
+            f'aria-label="hourly forecast">{"".join(parts)}</svg></div>')
 
 
 register("title", png=title_png, html=title_html)
@@ -553,3 +733,4 @@ register("divider", png=divider_png, html=divider_html)
 register("spacer", png=spacer_png, html=spacer_html)
 register("stats", png=stats_png, html=stats_html)
 register("hero", png=hero_png, html=hero_html)
+register("hourly", png=hourly_png, html=hourly_html)
