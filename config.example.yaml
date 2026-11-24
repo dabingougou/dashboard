@@ -30,11 +30,13 @@ dashboards:
       tomorrow_tags: false        # true -> tags beside the date for what changes tomorrow
       # simulate_tomorrow: {temp: -4, wind: 15, rain: 60}   # with simulate: tomorrow minus today
     agenda:
-      days: 3                     # day columns, today first
+      style: rows                 # rows (one band per day, then today's to-dos) or columns
+      days: 2                     # days shown, today first (default 2 for rows, 3 for columns)
+      max_events: 5               # rows: event lines per day, the last becomes "+N more"
       calendars: []               # private .ics addresses (SECRET: keep real ones only in config.yaml)
       todoist_token: ""           # Todoist API token (SECRET)
       todoist_filter: ""          # blank -> "overdue | next 7 days"
-      max_tasks: 2                # tasks per day before "…"
+      max_tasks: 2                # columns: tasks per day before "…"
       simulate: false             # true -> made up SAMPLE events and tasks, no network
 
   # example_private_dashboard:

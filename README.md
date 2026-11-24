@@ -26,7 +26,7 @@ src/dashlib/
   runner.py               fetch -> layout -> render, stale fallback, safety checks
   elements/__init__.py    element type registry (type name -> PNG + HTML drawer)
   elements/builtin.py     built in types: title, banner, text, kv, list, table, divider, spacer, stats,
-                          hero, hourly, days
+                          hero, hourly, days, dayrows
   sections.py             helpers for dashboards made of independent sections
   render_png.py           Pillow renderer (Canvas used by PNG drawers)
   render_html.py          HTML page template
@@ -205,13 +205,22 @@ setting it below the threshold previews the dry look.
 
 ### Agenda (calendar and to-dos)
 
-The `agenda` section draws the next few days (`days`, default 3) side by side
-with a `days` element: each column has the day's calendar events (time, then
-the title in bold; "All day" for all day events) and, at the bottom, its
-to-do tasks (at most `max_tasks`, default 2, then "…"). Every title takes one
-line and ends with "…" when it is too long. Events that already
-ended drop off today's column, overdue tasks go into today, and empty days
-stay blank.
+The `agenda` section has two styles (`style`):
+
+- **`rows`** (default): one band per day (`days`, default 2: today and
+  tomorrow), drawn with a `dayrows` element. Each event is one line: the time,
+  then the title in bold ("All day" for all day events). A day with no events
+  shrinks to one short line; a busy day shows at most `max_events` lines
+  (default 5), the last one becoming "+N more". Today's to-dos (overdue ones
+  included) fill whatever space is left under a double rule, ending with
+  "+N more" when they do not all fit. When fewer than two lines are left, the
+  to-dos are left out, so a busy calendar always wins.
+- **`columns`**: the days side by side (`days`, default 3) with a `days`
+  element, events on top and that day's to-dos at the bottom of each column
+  (at most `max_tasks`, default 2, then "…").
+
+Every title takes one line and ends with "…" when it is too long. Events that
+already ended drop off today.
 
 - **Calendars:** `calendars` is a list of private iCal (`.ics`) addresses, for
   example Google Calendar's "Secret address in iCal format". Repeating events
@@ -222,7 +231,7 @@ stay blank.
 
 Both are secrets: put them only in `config.yaml`. With neither set the screen
 says "Agenda: add calendars or todoist_token in config.yaml". `simulate: true`
-draws a labeled SAMPLE week with no network.
+draws labeled SAMPLE events and to-dos with no network.
 
 ## Kindle delivery
 

@@ -1,8 +1,17 @@
-"""Agenda section: the next few days side by side, calendar events on top and
-to-do tasks at the bottom of each day.
+"""Agenda section: calendar events and to-do tasks for the next few days.
+
+Two styles:
+    rows     (default) one band per day, sized to its events (at most
+             max_events lines), then today's to-dos in whatever space is left.
+             On a busy day the to-dos are left out.
+    columns  days side by side, events on top and that day's to-dos at the
+             bottom of each column.
 
 Config (dashboards.today.agenda in config.yaml):
-    days             number of day columns, today first (default 3)
+    style            rows or columns (default rows)
+    days             number of days, today first (default 2 for rows, 3 for columns)
+    max_events       rows: event lines per day, the last one becomes
+                     "+N more" when there are too many (default 5)
     calendars        list of private iCal (.ics) addresses. These are secrets:
                      anyone with the address can read the calendar. Keep them
                      only in config.yaml.
@@ -10,7 +19,7 @@ Config (dashboards.today.agenda in config.yaml):
     todoist_filter   Todoist filter for which tasks to show
                      (default "overdue | next 7 days"); only tasks due inside
                      the shown days are drawn, overdue ones go to today.
-    max_tasks        tasks shown per day before "…" (default 2)
+    max_tasks        columns: tasks shown per day before "…" (default 2)
     simulate         true -> made up SAMPLE events and tasks, no network
 
 Events that have already ended disappear from today. All day events show
@@ -37,9 +46,16 @@ USER_AGENT = "dashboard/0.1"
 
 
 # ----- fetch ---------------------------------------------------------------
+def _style(config) -> str:
+    style = str(config.get("style") or "rows")
+    if style not in ("rows", "columns"):
+        raise ValueError("agenda.style must be rows or columns")
+    return style
+
+
 def _days(config) -> int:
     try:
-        n = int(config.get("days") or 3)
+        n = int(config.get("days") or (2 if _style(config) == "rows" else 3))
     except (TypeError, ValueError):
         raise ValueError("agenda.days must be a whole number") from None
     if not 1 <= n <= 7:
@@ -130,7 +146,8 @@ def fetch(config: dict) -> dict:
     n = _days(config)
     today = datetime.now(tz).date()
     data = {"status": "ok", "sample": bool(config.get("simulate")), "days": n,
-            "max_tasks": config.get("max_tasks") or 2}
+            "style": _style(config), "max_tasks": config.get("max_tasks") or 2,
+            "max_events": config.get("max_events") or 5}
     if config.get("simulate"):
         return {**data, **_simulated(today, tz)}
 
@@ -209,12 +226,19 @@ def layout(data: dict, ctx) -> list[dict]:
         tasks.sort(key=lambda t: (t.get("due", ""), -int(t.get("priority") or 1), t.get("order") or 0))
 
         title = "Today" if i == 0 else f"{day:%a} {day.day}"
-        columns.append({"title": title, "events": events, "tasks": [t["text"] for t in tasks]})
+        columns.append({"title": title, "label": "Today" if i == 0 else f"{day:%a}", "sub": str(day.day),
+                        "events": events, "tasks": [t["text"] for t in tasks]})
 
     out = []
     if data.get("sample"):
         out.append({"type": "text", "text": "SAMPLE agenda (simulate: true), not real", "size": 20,
                     "bold": True})
-    out.append({"type": "divider"})
-    out.append({"type": "days", "columns": columns, "max_tasks": data.get("max_tasks") or 2})
+    if data.get("style") == "columns":
+        out.append({"type": "divider"})
+        out.append({"type": "days", "columns": columns, "max_tasks": data.get("max_tasks") or 2})
+        return out
+    rows = [{"label": col["label"], "sub": col["sub"], "short": col["title"], "events": col["events"]}
+            for col in columns]
+    out.append({"type": "dayrows", "rows": rows, "max_lines": data.get("max_events") or 5,
+                "list": columns[0]["tasks"] if columns else [], "list_title": "To do today"})
     return out

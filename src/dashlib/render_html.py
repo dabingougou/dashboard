@@ -42,6 +42,12 @@ h1.el-title .tags.row li.label { display: block; font-weight: 400; font-size: .8
 .el-days h3 { margin: 0 0 8px; border-bottom: 2px solid var(--rule); }
 .el-days ul { list-style: none; padding: 0; margin: 0 0 12px; } .el-days li { margin: 0 0 10px; }
 .el-days .tk { border-top: 1px solid var(--rule); padding-top: 8px; font-weight: 700; }
+.el-dayrows { border-top: 2px solid var(--rule); }
+.el-dayrows .r { display: flex; gap: 16px; border-bottom: 1px solid var(--rule); padding: 8px 0; }
+.el-dayrows h3 { margin: 0; min-width: 6em; } .el-dayrows ul { list-style: none; padding: 0; margin: 0; }
+.el-dayrows small { display: inline-block; min-width: 5.5em; }
+.el-dayrows .ls { border-top: 3px double var(--rule); padding: 8px 0 0 12px; border-left: 1px solid var(--rule); margin-top: 2px; }
+.el-dayrows h4 { margin: 0 0 6px; } .el-dayrows .ls li { font-weight: 700; margin: 2px 0; }
 .el-hourly svg { width: 100%; height: auto; display: block; }
 .el-subtitle { color: var(--muted); margin: 4px 0 0; }
 .el-banner { background: var(--fg); color: var(--bg); font-weight: 700; text-align: center;

@@ -706,6 +706,105 @@ def days_html(page, el):
     return f'<div class="el el-days">{"".join(out)}</div>'
 
 
+# ----- dayrows -------------------------------------------------------------
+# One horizontal band per day, sized to its events, then a list (for example
+# today's to-dos) in whatever space is left. The list is left out when fewer
+# than `min_list_lines` lines fit.
+DAYROWS_LABEL_PX = 26
+DAYROWS_NUM_PX = 34
+DAYROWS_TIME_PX = 19
+DAYROWS_EVENT_PX = 22
+DAYROWS_ITEM_PX = 20
+DAYROWS_LABEL_W = 104     # day name column
+DAYROWS_TIME_W = 106      # event time column
+DAYROWS_PAD = 14          # space between a rule and the text under it
+DAYROWS_LIST_INDENT = 16
+
+
+def dayrows_png(c, el):
+    rows = [r for r in (el.get("rows") or []) if isinstance(r, dict)]
+    lf, nf, tf = c.font(DAYROWS_LABEL_PX, bold=True), c.font(DAYROWS_NUM_PX, bold=True), c.font(DAYROWS_TIME_PX)
+    ef, kf, hf = c.font(DAYROWS_EVENT_PX, bold=True), c.font(DAYROWS_ITEM_PX, bold=True), c.font(DAYROWS_TIME_PX, bold=True)
+    elh, klh = c.line_height(ef) * 1.12, c.line_height(kf) * 1.15
+    max_lines = max(1, int(el.get("max_lines") or 5))
+    ev_x = c.x0 + DAYROWS_LABEL_W
+    title_x = ev_x + DAYROWS_TIME_W
+    bottom = c.bottom - 4
+    y = c.y + 4
+    if el.get("rule_top", True):
+        c.draw.rectangle([c.x0, y, c.x1, y + 2], fill=BLACK)
+        y += 3
+    for i, r in enumerate(rows):
+        if i:
+            c.draw.line([c.x0, y, c.x1, y], fill=BLACK, width=2)
+        evs = [e for e in (r.get("events") or []) if isinstance(e, dict)]
+        if not evs:   # one short line: "Wed 25   No events"
+            c.draw.text((c.x0, y + DAYROWS_PAD - 6), _s(r.get("short") or r.get("label")), font=lf, fill=BLACK)
+            c.draw.text((title_x, y + DAYROWS_PAD - 1), _s(el.get("empty_text", "No events")), font=tf, fill=BLACK)
+            y += c.line_height(lf) + DAYROWS_PAD + 4
+            continue
+        shown = evs if len(evs) <= max_lines else evs[:max_lines - 1]
+        c.draw.text((c.x0, y + DAYROWS_PAD - 4), _s(r.get("label")), font=lf, fill=BLACK)
+        if r.get("sub"):
+            c.draw.text((c.x0, y + DAYROWS_PAD - 4 + c.line_height(lf)), _s(r["sub"]), font=nf, fill=BLACK)
+        ly = y + DAYROWS_PAD - 2
+        for e in shown:
+            c.draw.text((ev_x, ly + 3), _s(e.get("time")), font=tf, fill=BLACK)
+            c.draw.text((title_x, ly), c.ellipsize(_s(e.get("text")), ef, c.x1 - title_x), font=ef, fill=BLACK)
+            ly += elh
+        if len(shown) < len(evs):
+            c.draw.text((title_x, ly + 3), f"+{len(evs) - len(shown)} more", font=tf, fill=BLACK)
+            ly += elh
+        label_h = DAYROWS_PAD - 4 + c.line_height(lf) + (c.line_height(nf) if r.get("sub") else 0) + 6
+        y = max(ly + 8, y + label_h)
+
+    items = [_s(t) for t in (el.get("list") or []) if t]
+    head_h = c.line_height(hf) + 15
+    fit = int((bottom - (y + 15) - head_h) // klh)
+    if items and fit >= max(1, int(el.get("min_list_lines") or 2)):
+        c.draw.line([c.x0, y, c.x1, y], fill=BLACK, width=2)          # double rule
+        c.draw.line([c.x0, y + 5, c.x1, y + 5], fill=BLACK, width=2)
+        y += 13
+        x = c.x0 + DAYROWS_LIST_INDENT
+        lh = c.line_height(hf)
+        c.draw.rectangle([c.x0, y + 2, c.x0 + 1, y + lh - 2], fill=BLACK)      # double bar by the heading
+        c.draw.rectangle([c.x0 + 5, y + 2, c.x0 + 6, y + lh - 2], fill=BLACK)
+        c.draw.text((x, y), _s(el.get("list_title")), font=hf, fill=BLACK)
+        y += head_h
+        show = items if len(items) <= fit else items[:fit - 1] + [None]
+        for k, t in enumerate(show):
+            ty = y + k * klh
+            if t is None:
+                c.draw.text((x, ty + 2), f"+{len(items) - fit + 1} more", font=tf, fill=BLACK)
+            else:
+                c.draw.text((x, ty), c.ellipsize(t, kf, c.x1 - x), font=kf, fill=BLACK)
+        c.draw.rectangle([c.x0, y + 2, c.x0 + 1, y + len(show) * klh - 6], fill=BLACK)  # single bar by the items
+    c.y = bottom
+
+
+def dayrows_html(page, el):
+    max_lines = max(1, int(el.get("max_lines") or 5))
+    out = []
+    for r in (el.get("rows") or []):
+        if not isinstance(r, dict):
+            continue
+        evs = [e for e in (r.get("events") or []) if isinstance(e, dict)]
+        shown = evs if len(evs) <= max_lines else evs[:max_lines - 1]
+        li = "".join(f'<li><small>{escape(_s(e.get("time")))}</small> <b>{escape(_s(e.get("text")))}</b></li>'
+                     for e in shown)
+        if len(shown) < len(evs):
+            li += f"<li><small>+{len(evs) - len(shown)} more</small></li>"
+        if not evs:
+            li = f'<li><small>{escape(_s(el.get("empty_text", "No events")))}</small></li>'
+        label = escape(_s(r.get("label"))) + (f' {escape(_s(r["sub"]))}' if r.get("sub") else "")
+        out.append(f'<div class="r"><h3>{label}</h3><ul>{li}</ul></div>')
+    items = [t for t in (el.get("list") or []) if t]
+    if items:
+        out.append(f'<div class="ls"><h4>{escape(_s(el.get("list_title")))}</h4><ul>'
+                   + "".join(f"<li>{escape(_s(t))}</li>" for t in items) + "</ul></div>")
+    return f'<div class="el el-dayrows">{"".join(out)}</div>'
+
+
 # ----- hourly --------------------------------------------------------------
 HOURLY_VALUE_PX = 22
 HOURLY_LABEL_PX = 20
@@ -851,3 +950,4 @@ register("stats", png=stats_png, html=stats_html)
 register("hero", png=hero_png, html=hero_html)
 register("hourly", png=hourly_png, html=hourly_html)
 register("days", png=days_png, html=days_html)
+register("dayrows", png=dayrows_png, html=dayrows_html)
