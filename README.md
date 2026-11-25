@@ -165,7 +165,7 @@ don't change. An unknown type draws a small placeholder instead of crashing.
 
 ## The `today` dashboard
 
-A private screen for the Kindle (refreshes every 15 minutes, `kindle_publish:
+A private screen for the Kindle (refreshes every 5 minutes, `kindle_publish:
 true`). It shows a compact date line (with tags for what changes tomorrow at
 its right, under a small "Tomorrow" label), then its sections in config order
 (`weather`, then `agenda`), then the footer.

@@ -66,11 +66,15 @@ as illustrations only and do not fit the code to them.
   `output/kindle/`, and the Kindle downloads a fresh copy each time the launcher
   runs. So behaviour changes go here, with no cable. The running loop keeps the old
   copy until it is restarted (stop file, then the owner taps the launcher again).
-- The loop: keeps the screensaver off, every 300 seconds fetches
-  `dashboard.png?n=<count>&bat=<battery>`, redraws with fbink only when the image
-  changed (and once an hour), and exits if `/stop` exists on the server. The
-  server log therefore shows one request per cycle with a battery reading, which
-  is the only monitoring we have. A 404 on `/stop` is normal.
+  Tapping the launcher while a loop runs is safe: the new loop takes over and the
+  old one exits at its next wake up (pid file `/mnt/us/dashboard.pid`).
+- The loop: keeps the screensaver off, fetches
+  `dashboard.png?n=<count>&bat=<battery>&t=<kindle clock>` every 5 minutes at
+  40 seconds past each multiple of 5 minutes on the Kindle's clock (just after
+  the Pi's refresh), redraws with fbink only when the image changed (and once an
+  hour), and exits if `/stop` exists on the server. The server log therefore
+  shows one request per cycle with a battery reading, which is the only
+  monitoring we have. A 404 on `/stop` is normal.
 - Tools on the Kindle: `/mnt/us/libkh/bin/fbink`, `eips`, busybox `wget`
   (no HTTPS), `lipc-set-prop`, `lipc-get-prop`. Files live under `/mnt/us`.
 - The Kindle's user storage is deliberately filled so only about 50 MB is free.
